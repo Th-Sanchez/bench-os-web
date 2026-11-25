@@ -31,14 +31,24 @@ jobs:
           npm test
 
       - name: Trigger Vertra Cloud deploy webhook (optional)
-        if: ${{ secrets.VERTRA_WEB_DEPLOY_WEBHOOK_URL != '' }}
+        env:
+          VERTRA_WEB_DEPLOY_WEBHOOK_URL: ${{ secrets.VERTRA_WEB_DEPLOY_WEBHOOK_URL }}
         run: |
-          curl --fail --silent --show-error -X POST "${{ secrets.VERTRA_WEB_DEPLOY_WEBHOOK_URL }}"
+          if [ -n "$VERTRA_WEB_DEPLOY_WEBHOOK_URL" ]; then
+            curl --fail --silent --show-error -X POST "$VERTRA_WEB_DEPLOY_WEBHOOK_URL"
+          else
+            echo "No deploy webhook configured; relying on Vertra Cloud auto_update_apps."
+          fi
 
       - name: Smoke test /api/health
-        if: ${{ vars.PROD_WEB_URL != '' }}
+        env:
+          PROD_WEB_URL: ${{ vars.PROD_WEB_URL }}
         run: |
-          URL="${{ vars.PROD_WEB_URL }}/api/health"
+          if [ -z "$PROD_WEB_URL" ]; then
+            echo "PROD_WEB_URL not configured; skipping post-deploy smoke test."
+            exit 0
+          fi
+          URL="${PROD_WEB_URL%/}/api/health"
           for i in $(seq 1 20); do
             if curl --fail --silent "$URL" | grep -q '"status":"UP"'; then
               echo "Health check UP at $URL"
