@@ -1,0 +1,50 @@
+name: CD — Vertra Cloud & SemVer Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install & verify
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+
+      - name: Trigger Vertra Cloud deploy webhook (optional)
+        if: ${{ secrets.VERTRA_WEB_DEPLOY_WEBHOOK_URL != '' }}
+        run: |
+          curl --fail --silent --show-error -X POST "${{ secrets.VERTRA_WEB_DEPLOY_WEBHOOK_URL }}"
+
+      - name: Smoke test /api/health
+        if: ${{ vars.PROD_WEB_URL != '' }}
+        run: |
+          URL="${{ vars.PROD_WEB_URL }}/api/health"
+          for i in $(seq 1 20); do
+            if curl --fail --silent "$URL" | grep -q '"status":"UP"'; then
+              echo "Health check UP at $URL"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Health check failed at $URL"
+          exit 1
