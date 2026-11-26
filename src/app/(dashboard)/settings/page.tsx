@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ClipboardCheck,
   Globe,
   KeyRound,
+  PenTool,
   Plus,
   Printer,
+  RotateCcw,
   Save,
   Shield,
   Tag,
@@ -27,12 +30,16 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { tenantSettingsApi, usersApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import {
+  mergeApplianceTypes,
+  resolveChecklistForCategory,
+} from '@/lib/constants/appliances';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import {
   usePrintPreferences,
   type LabelPrintFormat,
 } from '@/lib/settings/PrintPreferencesContext';
-import type { Role, UserResponse } from '@/lib/types/api';
+import type { Role, UserResponse, WhatsappMessageStage } from '@/lib/types/api';
 import {
   formatCurrencyInput,
   maskCurrencyBRL,
@@ -40,6 +47,48 @@ import {
   parseCurrencyBRL,
 } from '@/lib/utils/masks';
 import { canManageShopSettings, canManageTeam } from '@/lib/utils/permissions';
+
+const TEMPLATE_PLACEHOLDERS = [
+  { api: '{customerName}', ptBr: '{nomeCliente}' },
+  { api: '{appliances}', ptBr: '{aparelhos}' },
+  { api: '{orderNumber}', ptBr: '{numeroOS}' },
+  { api: '{totalPrice}', ptBr: '{valorTotal}' },
+  { api: '{trackingUrl}', ptBr: '{linkAcompanhamento}' },
+] as const;
+
+const LEGACY_PLACEHOLDERS = [{ api: '{appliance}', ptBr: '{aparelho}' }] as const;
+
+const DEFAULT_TEMPLATES_API: Record<WhatsappMessageStage, string> = {
+  INTAKE:
+    'Olá {customerName}! Registramos sua OS #{orderNumber}:\n{appliances}\nAcompanhe o andamento em tempo real: {trackingUrl}',
+  QUOTE:
+    'Olá {customerName}! Segue o orçamento da OS #{orderNumber}:\n{appliances}\nTotal: {totalPrice}\nAprove ou acompanhe por aqui: {trackingUrl}',
+  READY:
+    'Olá {customerName}! Seus aparelhos da OS #{orderNumber} estão prontos para retirada:\n{appliances}\nTotal: {totalPrice}\nDetalhes: {trackingUrl}',
+};
+
+function toDisplayTemplate(apiTemplate: string, locale: 'pt-BR' | 'en'): string {
+  let result = apiTemplate;
+  const allPairs = [...TEMPLATE_PLACEHOLDERS, ...LEGACY_PLACEHOLDERS];
+  if (locale === 'pt-BR') {
+    for (const pair of allPairs) {
+      result = result.split(pair.api).join(pair.ptBr);
+    }
+  } else {
+    for (const pair of allPairs) {
+      result = result.split(pair.ptBr).join(pair.api);
+    }
+  }
+  return result;
+}
+
+function toApiTemplate(displayTemplate: string): string {
+  let result = displayTemplate;
+  for (const pair of [...TEMPLATE_PLACEHOLDERS, ...LEGACY_PLACEHOLDERS]) {
+    result = result.split(pair.ptBr).join(pair.api);
+  }
+  return result;
+}
 
 export default function SettingsPage() {
   const { locale, setLocale, t } = useI18n();
@@ -70,7 +119,11 @@ export default function SettingsPage() {
   const [waIntakeDraft, setWaIntakeDraft] = useState<string | null>(null);
   const [waQuoteDraft, setWaQuoteDraft] = useState<string | null>(null);
   const [waReadyDraft, setWaReadyDraft] = useState<string | null>(null);
+  const [googleReviewUrlDraft, setGoogleReviewUrlDraft] = useState<string | null>(null);
+  const [deliverySignatureDraft, setDeliverySignatureDraft] = useState<boolean | null>(null);
   const [newApplianceType, setNewApplianceType] = useState('');
+  const [selectedChecklistCategory, setSelectedChecklistCategory] = useState('Micro-ondas');
+  const [newChecklistItem, setNewChecklistItem] = useState('');
 
   const serverSettings = settingsQuery.data;
   const defaultLaborInput =
@@ -79,9 +132,66 @@ export default function SettingsPage() {
     defaultDaysDraft ?? (serverSettings ? String(serverSettings.defaultEstimatedDays) : '3');
   const abandonmentDays =
     abandonmentDaysDraft ?? (serverSettings ? String(serverSettings.abandonmentDays) : '180');
-  const waIntake = waIntakeDraft ?? (serverSettings?.whatsappIntakeTemplate ?? '');
-  const waQuote = waQuoteDraft ?? (serverSettings?.whatsappQuoteTemplate ?? '');
-  const waReady = waReadyDraft ?? (serverSettings?.whatsappReadyTemplate ?? '');
+  const waIntake = toDisplayTemplate(
+    waIntakeDraft ?? (serverSettings?.whatsappIntakeTemplate || DEFAULT_TEMPLATES_API.INTAKE),
+    locale
+  );
+  const waQuote = toDisplayTemplate(
+    waQuoteDraft ?? (serverSettings?.whatsappQuoteTemplate || DEFAULT_TEMPLATES_API.QUOTE),
+    locale
+  );
+  const waReady = toDisplayTemplate(
+    waReadyDraft ?? (serverSettings?.whatsappReadyTemplate || DEFAULT_TEMPLATES_API.READY),
+    locale
+  );
+  const googleReviewUrl = googleReviewUrlDraft ?? (serverSettings?.googleReviewUrl ?? '');
+  const deliverySignatureEnabled =
+    deliverySignatureDraft ?? Boolean(serverSettings?.deliverySignatureEnabled);
+
+  const templateRefs = useRef<Record<WhatsappMessageStage, HTMLTextAreaElement | null>>({
+    INTAKE: null,
+    QUOTE: null,
+    READY: null,
+  });
+
+  function insertPlaceholder(stage: WhatsappMessageStage, variable: string) {
+    const currentValue =
+      stage === 'INTAKE' ? waIntake : stage === 'QUOTE' ? waQuote : waReady;
+    const setDraft =
+      stage === 'INTAKE'
+        ? setWaIntakeDraft
+        : stage === 'QUOTE'
+          ? setWaQuoteDraft
+          : setWaReadyDraft;
+    const el = templateRefs.current[stage];
+
+    let nextValue: string;
+    let nextCursor: number;
+
+    if (el && document.activeElement === el) {
+      const start = el.selectionStart ?? currentValue.length;
+      const end = el.selectionEnd ?? currentValue.length;
+      const before = currentValue.slice(0, start);
+      const after = currentValue.slice(end);
+      nextValue = `${before}${variable}${after}`;
+      nextCursor = start + variable.length;
+    } else {
+      const sep =
+        currentValue.length > 0 && !/[\s\n]$/.test(currentValue) ? ' ' : '';
+      nextValue = `${currentValue}${sep}${variable}`;
+      nextCursor = nextValue.length;
+    }
+
+    setDraft(nextValue);
+
+    requestAnimationFrame(() => {
+      const target = templateRefs.current[stage];
+      if (target) {
+        target.focus();
+        target.setSelectionRange(nextCursor, nextCursor);
+      }
+    });
+  }
 
   // Team modals
   const [createMemberOpen, setCreateMemberOpen] = useState(false);
@@ -99,9 +209,11 @@ export default function SettingsPage() {
         defaultLaborCost: parseCurrencyBRL(defaultLaborInput),
         defaultEstimatedDays: Math.max(1, Number.parseInt(defaultDays, 10) || 3),
         abandonmentDays: Math.max(30, Number.parseInt(abandonmentDays, 10) || 180),
-        whatsappIntakeTemplate: waIntake.trim() || undefined,
-        whatsappQuoteTemplate: waQuote.trim(),
-        whatsappReadyTemplate: waReady.trim() || undefined,
+        whatsappIntakeTemplate: toApiTemplate(waIntake.trim()) || undefined,
+        whatsappQuoteTemplate: toApiTemplate(waQuote.trim()),
+        whatsappReadyTemplate: toApiTemplate(waReady.trim()) || undefined,
+        googleReviewUrl: googleReviewUrl.trim(),
+        deliverySignatureEnabled,
       }),
     onSuccess: async () => {
       setDefaultLaborDraft(null);
@@ -110,6 +222,8 @@ export default function SettingsPage() {
       setWaIntakeDraft(null);
       setWaQuoteDraft(null);
       setWaReadyDraft(null);
+      setGoogleReviewUrlDraft(null);
+      setDeliverySignatureDraft(null);
       await queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
       toast.success(locale === 'en' ? 'Settings saved' : 'Configurações salvas!');
     },
@@ -139,6 +253,78 @@ export default function SettingsPage() {
       toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
     },
   });
+
+  const checklistTemplates = useMemo(
+    () => serverSettings?.intakeChecklistTemplates ?? {},
+    [serverSettings?.intakeChecklistTemplates]
+  );
+
+  const checklistCategories = useMemo(
+    () =>
+      mergeApplianceTypes([
+        ...(serverSettings?.customApplianceTypes ?? []),
+        ...Object.keys(checklistTemplates),
+      ]),
+    [serverSettings?.customApplianceTypes, checklistTemplates]
+  );
+
+  const activeChecklistItems = useMemo(
+    () => resolveChecklistForCategory(checklistTemplates, selectedChecklistCategory),
+    [checklistTemplates, selectedChecklistCategory]
+  );
+
+  const updateChecklistsMutation = useMutation({
+    mutationFn: (nextTemplates: Record<string, string[]>) =>
+      tenantSettingsApi.updateIntakeChecklists(nextTemplates),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant-settings'], updated);
+      setNewChecklistItem('');
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  const resetChecklistsMutation = useMutation({
+    mutationFn: () => tenantSettingsApi.resetIntakeChecklists(),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant-settings'], updated);
+      toast.success(
+        locale === 'en' ? 'Default checklists restored' : 'Sugestões padrão restauradas!'
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  function mutateCategoryChecklist(nextItems: string[]) {
+    const nextMap: Record<string, string[]> = {};
+    const targetLower = selectedChecklistCategory.trim().toLowerCase();
+    let replaced = false;
+    for (const [key, items] of Object.entries(checklistTemplates)) {
+      if (key.trim().toLowerCase() === targetLower) {
+        nextMap[key] = nextItems;
+        replaced = true;
+      } else {
+        nextMap[key] = items;
+      }
+    }
+    if (!replaced) {
+      nextMap[selectedChecklistCategory] = nextItems;
+    }
+    updateChecklistsMutation.mutate(nextMap);
+  }
+
+  function handleAddChecklistItem() {
+    const trimmed = newChecklistItem.trim();
+    if (!trimmed) return;
+    if (activeChecklistItems.some((item) => item.toLowerCase() === trimmed.toLowerCase())) {
+      setNewChecklistItem('');
+      return;
+    }
+    mutateCategoryChecklist([...activeChecklistItems, trimmed]);
+  }
 
   const createMemberMutation = useMutation({
     mutationFn: () =>
@@ -278,8 +464,8 @@ export default function SettingsPage() {
               </h2>
               <p className="text-xs text-slate-500">
                 {locale === 'en'
-                  ? 'Variables: {customerName}, {orderNumber}, {appliances}, {totalPrice}, {trackingUrl}'
-                  : 'Variáveis disponíveis: {customerName}, {orderNumber}, {appliances}, {totalPrice}, {trackingUrl}'}
+                  ? 'Click any variable pill below a message to insert it at the cursor.'
+                  : 'Clique nas variáveis abaixo de cada mensagem para inserir automaticamente no texto.'}
               </p>
             </div>
             <Button
@@ -327,31 +513,121 @@ export default function SettingsPage() {
                 </Field>
               </div>
 
+              <Field
+                label={
+                  locale === 'en'
+                    ? 'Google Business Review Link (optional)'
+                    : 'Link de avaliação no Google (Google Meu Negócio)'
+                }
+                hint={
+                  locale === 'en'
+                    ? 'Customers who submit 5★ on the public /track page after delivery see a direct button to review your shop on Google.'
+                    : 'Clientes que avaliarem com 5★ no /track após a entrega verão um botão direto para avaliar sua oficina no Google Maps.'
+                }
+              >
+                <input
+                  type="url"
+                  maxLength={500}
+                  value={googleReviewUrl}
+                  onChange={(e) => setGoogleReviewUrlDraft(e.target.value)}
+                  placeholder="https://g.page/r/.../review"
+                  className={inputClassName}
+                />
+              </Field>
+
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <PenTool className="h-4 w-4 text-blue-600" />
+                    {locale === 'en'
+                      ? 'Digital Pickup Signature'
+                      : 'Assinatura Digital na Retirada'}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {locale === 'en'
+                      ? 'When enabled, displays an optional signature pad on the delivery screen (web & mobile) and embeds it in the warranty receipt.'
+                      : 'Quando ativada, exibe o campo de assinatura na tela de entrega (web e app) para constar no comprovante e termo de garantia.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={deliverySignatureEnabled}
+                  aria-label={
+                    locale === 'en'
+                      ? 'Toggle digital pickup signature'
+                      : 'Ativar ou desativar assinatura digital na retirada'
+                  }
+                  onClick={() => setDeliverySignatureDraft(!deliverySignatureEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    deliverySignatureEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      deliverySignatureEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <Field label="WhatsApp · Entrada (INTAKE)">
-                  <textarea
-                    rows={4}
-                    value={waIntake}
-                    onChange={(e) => setWaIntakeDraft(e.target.value)}
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="WhatsApp · Orçamento (QUOTE)" required>
-                  <textarea
-                    rows={4}
-                    value={waQuote}
-                    onChange={(e) => setWaQuoteDraft(e.target.value)}
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="WhatsApp · Pronto (READY)">
-                  <textarea
-                    rows={4}
-                    value={waReady}
-                    onChange={(e) => setWaReadyDraft(e.target.value)}
-                    className={inputClassName}
-                  />
-                </Field>
+                {(
+                  [
+                    {
+                      stage: 'INTAKE' as WhatsappMessageStage,
+                      label: locale === 'en' ? 'WhatsApp · Intake' : 'WhatsApp · Entrada',
+                      value: waIntake,
+                      onChange: setWaIntakeDraft,
+                      required: false,
+                    },
+                    {
+                      stage: 'QUOTE' as WhatsappMessageStage,
+                      label: locale === 'en' ? 'WhatsApp · Quote' : 'WhatsApp · Orçamento',
+                      value: waQuote,
+                      onChange: setWaQuoteDraft,
+                      required: true,
+                    },
+                    {
+                      stage: 'READY' as WhatsappMessageStage,
+                      label: locale === 'en' ? 'WhatsApp · Ready' : 'WhatsApp · Pronto para Retirada',
+                      value: waReady,
+                      onChange: setWaReadyDraft,
+                      required: false,
+                    },
+                  ]
+                ).map((tpl) => (
+                  <div key={tpl.stage} className="space-y-2">
+                    <Field label={tpl.label} required={tpl.required}>
+                      <textarea
+                        ref={(el) => {
+                          templateRefs.current[tpl.stage] = el;
+                        }}
+                        rows={5}
+                        value={tpl.value}
+                        onChange={(e) => tpl.onChange(e.target.value)}
+                        className={inputClassName}
+                      />
+                    </Field>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TEMPLATE_PLACEHOLDERS.map((pair) => {
+                        const displayVar = locale === 'pt-BR' ? pair.ptBr : pair.api;
+                        return (
+                          <button
+                            key={pair.api}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => insertPlaceholder(tpl.stage, displayVar)}
+                            className="inline-flex items-center gap-0.5 rounded-md border border-blue-200 bg-blue-50/70 px-2 py-0.5 font-mono text-[11px] font-semibold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100 active:scale-[0.98]"
+                          >
+                            <Plus className="h-3 w-3 shrink-0" />
+                            {displayVar}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -408,6 +684,126 @@ export default function SettingsPage() {
                 : 'Usando as 18 categorias padrão de eletrodomésticos.'}
             </p>
           )}
+        </div>
+      </Card>
+
+      {/* Intake Checklists by Appliance Category */}
+      <Card className="p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900">
+              <ClipboardCheck className="h-4 w-4 text-blue-600" />
+              {locale === 'en'
+                ? 'Quick Intake Checklist by Category'
+                : 'Checklist Rápido de Recebimento por Categoria'}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {locale === 'en'
+                ? 'Displayed when opening a new order to prevent forgotten accessories or aesthetic disputes.'
+                : 'Aparece na abertura da OS para lembrar de itens críticos (ex.: retirar prato do micro-ondas) e registrar no /track.'}
+            </p>
+          </div>
+          {isOwnerRole && (
+            <Button
+              variant="outline"
+              size="sm"
+              loading={resetChecklistsMutation.isPending}
+              onClick={() => resetChecklistsMutation.mutate()}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {locale === 'en' ? 'Restore defaults' : 'Restaurar padrões'}
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <Field label={locale === 'en' ? 'Appliance category' : 'Categoria do aparelho'}>
+              <select
+                value={selectedChecklistCategory}
+                onChange={(e) => setSelectedChecklistCategory(e.target.value)}
+                className={inputClassName}
+              >
+                {checklistCategories.map((cat) => {
+                  const count = resolveChecklistForCategory(checklistTemplates, cat).length;
+                  return (
+                    <option key={cat} value={cat}>
+                      {count > 0 ? `${cat} (${count})` : cat}
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+          </div>
+
+          <div className="space-y-3 lg:col-span-8">
+            {isOwnerRole && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  maxLength={160}
+                  value={newChecklistItem}
+                  onChange={(e) => setNewChecklistItem(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddChecklistItem();
+                    }
+                  }}
+                  placeholder={
+                    locale === 'en'
+                      ? `Add checklist item for ${selectedChecklistCategory}...`
+                      : `Novo item para ${selectedChecklistCategory} (ex.: Prato devolvido ao cliente)...`
+                  }
+                  className={inputClassName}
+                />
+                <Button
+                  variant="outline"
+                  size="md"
+                  disabled={!newChecklistItem.trim()}
+                  loading={updateChecklistsMutation.isPending}
+                  onClick={handleAddChecklistItem}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {activeChecklistItems.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                {locale === 'en'
+                  ? `No checklist items configured for ${selectedChecklistCategory}.`
+                  : `Nenhum item de checklist configurado para ${selectedChecklistCategory}.`}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {activeChecklistItems.map((itemLabel) => (
+                  <span
+                    key={itemLabel}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700"
+                  >
+                    <span className="text-emerald-600">✓</span>
+                    {itemLabel}
+                    {isOwnerRole && (
+                      <button
+                        type="button"
+                        disabled={updateChecklistsMutation.isPending}
+                        onClick={() =>
+                          mutateCategoryChecklist(
+                            activeChecklistItems.filter((x) => x !== itemLabel)
+                          )
+                        }
+                        className="text-slate-400 hover:text-red-600"
+                        aria-label={`Remover ${itemLabel}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Card>
 

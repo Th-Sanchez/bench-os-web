@@ -135,6 +135,9 @@ export interface TenantSettingsResponse {
   whatsappQuoteTemplate: string | null;
   whatsappReadyTemplate: string | null;
   customApplianceTypes: string[];
+  googleReviewUrl: string | null;
+  deliverySignatureEnabled: boolean;
+  intakeChecklistTemplates: Record<string, string[]>;
 }
 
 export interface UpdateTenantSettingsRequest {
@@ -144,6 +147,8 @@ export interface UpdateTenantSettingsRequest {
   whatsappIntakeTemplate?: string;
   whatsappQuoteTemplate: string;
   whatsappReadyTemplate?: string;
+  googleReviewUrl?: string;
+  deliverySignatureEnabled?: boolean;
 }
 
 // Customer
@@ -165,6 +170,11 @@ export interface UpsertCustomerRequest {
 }
 
 // Order
+export interface IntakeChecklistEntry {
+  label: string;
+  checked: boolean;
+}
+
 export interface CreateServiceOrderItemRequest {
   applianceType: string;
   brand: string;
@@ -173,6 +183,7 @@ export interface CreateServiceOrderItemRequest {
   serialNumber?: string;
   accessories?: string;
   reportedIssue: string;
+  intakeChecklist?: IntakeChecklistEntry[];
 }
 
 export interface CreateServiceOrderRequest {
@@ -191,6 +202,7 @@ export interface ServiceOrderItemResponse {
   voltage: Voltage;
   serialNumber: string | null;
   accessories: string | null;
+  intakeChecklist?: IntakeChecklistEntry[];
   reportedIssue: string;
   technicalDiagnosis: string | null;
   status: ItemStatus;
@@ -206,6 +218,8 @@ export interface ServiceOrderItemResponse {
   approvedAt: string | null;
   finishedAt: string | null;
   deliveredAt: string | null;
+  deliverySignatureSvg: string | null;
+  deliverySignerName: string | null;
   discardedAt: string | null;
   parentItemId: string | null;
   parentOrderId: string | null;
@@ -225,6 +239,9 @@ export interface ServiceOrderResponse {
   customerPhone: string | null;
   createdByUserId: string;
   notes: string | null;
+  customerRating: number | null;
+  customerFeedback: string | null;
+  customerRatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   items: ServiceOrderItemResponse[];
@@ -313,6 +330,8 @@ export interface PaymentPartRequest {
 
 export interface DeliverItemRequest {
   payments?: PaymentPartRequest[];
+  deliverySignatureSvg?: string;
+  deliverySignerName?: string;
 }
 
 export interface WhatsappLinkResponse {

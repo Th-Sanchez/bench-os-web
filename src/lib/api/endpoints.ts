@@ -92,6 +92,15 @@ export const tenantSettingsApi = {
       method: 'DELETE',
       query: { name },
     }),
+  updateIntakeChecklists: (templates: Record<string, string[]>) =>
+    apiRequest<TenantSettingsResponse>('/api/v1/tenant/settings/intake-checklists', {
+      method: 'PUT',
+      body: { templates },
+    }),
+  resetIntakeChecklists: () =>
+    apiRequest<TenantSettingsResponse>('/api/v1/tenant/settings/intake-checklists', {
+      method: 'DELETE',
+    }),
 };
 
 export const customersApi = {

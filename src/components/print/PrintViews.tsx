@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { toSignatureDataUri } from '@/components/orders/SignaturePad';
 import type {
   ItemPaymentSummaryResponse,
   ServiceOrderResponse,
   TenantResponse,
 } from '@/lib/types/api';
 import type { LabelPrintFormat } from '@/lib/settings/PrintPreferencesContext';
-import { formatBRL, formatDate, maskCpfCnpj, maskPhoneBR } from '@/lib/utils/masks';
+import { formatBRL, formatDate, formatDateTime, maskCpfCnpj, maskPhoneBR } from '@/lib/utils/masks';
 import { getWarrantyRemainingDays } from '@/lib/utils/permissions';
 
 const TRACKING_BASE = (
@@ -125,6 +126,19 @@ export function PrintableWarrantyReceipt({
   const itemsToRender = deliveredItems.length > 0 ? deliveredItems : order.items;
   const grandTotal = itemsToRender.reduce((acc, i) => acc + i.totalPrice, 0);
 
+  const signedItem = [...itemsToRender]
+    .filter((i) => Boolean(toSignatureDataUri(i.deliverySignatureSvg)))
+    .sort(
+      (a, b) =>
+        new Date(b.deliveredAt ?? 0).getTime() - new Date(a.deliveredAt ?? 0).getTime()
+    )[0];
+  const signatureUri = signedItem ? toSignatureDataUri(signedItem.deliverySignatureSvg) : '';
+  const signerLabel =
+    signedItem?.deliverySignerName ||
+    itemsToRender.find((i) => i.deliverySignerName)?.deliverySignerName ||
+    order.customerName ||
+    'Cliente';
+
   return (
     <div className="print-only text-black text-xs leading-relaxed">
       <div className="flex items-start justify-between border-b-2 border-black pb-3">
@@ -200,10 +214,31 @@ export function PrintableWarrantyReceipt({
         voltagem incorreta ou violação do aparelho por terceiros.
       </p>
 
-      <div className="mt-10 grid grid-cols-2 gap-8 text-center text-[11px]">
-        <div className="border-t border-black pt-1">{tenant?.name ?? 'Oficina'}</div>
-        <div className="border-t border-black pt-1">
-          Assinatura do Cliente ({order.customerName ?? 'Cliente'})
+      <div className="mt-8 grid grid-cols-2 items-end gap-8 text-center text-[11px] print-break-avoid">
+        <div>
+          {signatureUri && <div className="h-16" />}
+          <div className="border-t border-black pt-1">{tenant?.name ?? 'Oficina'}</div>
+          <p className="text-[9.5px] text-slate-500">Responsável Técnico / Oficina</p>
+        </div>
+        <div>
+          {signatureUri && (
+            <div className="flex h-16 items-end justify-center pb-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={signatureUri}
+                alt="Assinatura digital do cliente"
+                className="max-h-15 max-w-full object-contain"
+              />
+            </div>
+          )}
+          <div className="border-t border-black pt-1">
+            {signatureUri ? signerLabel : `Assinatura do Cliente (${signerLabel})`}
+          </div>
+          <p className="text-[9.5px] text-slate-500">
+            {signatureUri && signedItem?.deliveredAt
+              ? `Assinado digitalmente na retirada · ${formatDateTime(signedItem.deliveredAt)}`
+              : 'Recebi os aparelhos em perfeitas condições'}
+          </p>
         </div>
       </div>
     </div>

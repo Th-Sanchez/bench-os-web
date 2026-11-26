@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, PenTool, Plus, Trash2 } from 'lucide-react';
+import { SignaturePad } from '@/components/orders/SignaturePad';
 import { Button, Field, Modal, inputClassName } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ordersApi } from '@/lib/api/endpoints';
+import { ordersApi, tenantSettingsApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import type { OrderPaymentMethod, ServiceOrderItemResponse } from '@/lib/types/api';
@@ -28,16 +29,25 @@ function DeliverSplitInner({
   onClose,
   orderId,
   item,
+  customerName,
   onDelivered,
 }: {
   onClose: () => void;
   orderId: string;
   item: ServiceOrderItemResponse;
+  customerName?: string | null;
   onDelivered?: () => void;
 }) {
   const { locale, t } = useI18n();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  const settingsQuery = useQuery({
+    queryKey: ['tenant-settings'],
+    queryFn: () => tenantSettingsApi.get(),
+    staleTime: 60_000,
+  });
+  const deliverySignatureEnabled = Boolean(settingsQuery.data?.deliverySignatureEnabled);
 
   const requiresPayment = item.status === 'READY_FOR_PICKUP' && item.totalPrice > 0;
   const [rows, setRows] = useState<SplitRow[]>(() =>
@@ -51,6 +61,8 @@ function DeliverSplitInner({
         ]
       : []
   );
+  const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState(customerName ?? '');
 
   const paidSum =
     Math.round(rows.reduce((acc, row) => acc + parseCurrencyBRL(row.amountInput), 0) * 100) / 100;
@@ -71,8 +83,20 @@ function DeliverSplitInner({
   }
 
   const deliverMutation = useMutation({
-    mutationFn: () =>
-      ordersApi.deliverItem(
+    mutationFn: () => {
+      const trimmedSigner = signerName.trim();
+      const signaturePayload = !deliverySignatureEnabled
+        ? {}
+        : signatureSvg
+          ? {
+              deliverySignatureSvg: signatureSvg,
+              deliverySignerName: trimmedSigner || undefined,
+            }
+          : trimmedSigner && trimmedSigner !== (customerName ?? '').trim()
+            ? { deliverySignerName: trimmedSigner }
+            : {};
+
+      return ordersApi.deliverItem(
         orderId,
         item.id,
         requiresPayment
@@ -83,9 +107,13 @@ function DeliverSplitInner({
                   amount: parseCurrencyBRL(r.amountInput),
                 }))
                 .filter((p) => p.amount > 0),
+              ...signaturePayload,
             }
-          : {}
-      ),
+          : {
+              ...signaturePayload,
+            }
+      );
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['order', orderId] }),
@@ -237,6 +265,29 @@ function DeliverSplitInner({
           </div>
         </div>
       )}
+
+      {/* Digital Pickup Signature (Optional, controlled by shop settings) */}
+      {deliverySignatureEnabled && (
+        <div className="mt-5 space-y-3 border-t border-slate-200 pt-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+            <PenTool className="h-3.5 w-3.5 text-blue-600" />
+            {locale === 'en' ? 'Pickup Signature (Optional)' : 'Assinatura na Retirada (Opcional)'}
+          </div>
+          <Field label={locale === 'en' ? 'Picked up by' : 'Retirado por'}>
+            <input
+              type="text"
+              maxLength={120}
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+              placeholder={
+                locale === 'en' ? 'Name of person picking up' : 'Nome de quem está retirando'
+              }
+              className={inputClassName}
+            />
+          </Field>
+          <SignaturePad locale={locale} onChange={setSignatureSvg} />
+        </div>
+      )}
     </Modal>
   );
 }
@@ -246,12 +297,14 @@ export function DeliverSplitModal({
   onClose,
   orderId,
   item,
+  customerName,
   onDelivered,
 }: {
   open: boolean;
   onClose: () => void;
   orderId: string;
   item: ServiceOrderItemResponse;
+  customerName?: string | null;
   onDelivered?: () => void;
 }) {
   if (!open) return null;
@@ -261,6 +314,7 @@ export function DeliverSplitModal({
       onClose={onClose}
       orderId={orderId}
       item={item}
+      customerName={customerName}
       onDelivered={onDelivered}
     />
   );

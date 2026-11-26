@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Check,
+  ClipboardCheck,
   Plus,
   Search,
   Trash2,
@@ -23,7 +24,10 @@ import {
 import { useToast } from '@/components/ui/ToastProvider';
 import { customersApi, ordersApi, tenantSettingsApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
-import { mergeApplianceTypes } from '@/lib/constants/appliances';
+import {
+  mergeApplianceTypes,
+  resolveChecklistForCategory,
+} from '@/lib/constants/appliances';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import type { CustomerResponse, Voltage } from '@/lib/types/api';
 import { maskPhoneBR } from '@/lib/utils/masks';
@@ -37,6 +41,7 @@ interface DraftItem {
   serialNumber: string;
   accessories: string;
   reportedIssue: string;
+  checkedLabels: string[];
 }
 
 const VOLTAGES: Voltage[] = ['V110', 'V220', 'BIVOLT', 'BATTERY', 'UNKNOWN'];
@@ -51,6 +56,7 @@ function createEmptyItem(): DraftItem {
     serialNumber: '',
     accessories: '',
     reportedIssue: '',
+    checkedLabels: [],
   };
 }
 
@@ -108,15 +114,29 @@ function NewOrderFormInner() {
       ordersApi.create({
         customerId: selectedCustomer!.id,
         notes: notes.trim() || undefined,
-        items: items.map((item) => ({
-          applianceType: item.applianceType.trim(),
-          brand: item.brand.trim(),
-          model: item.model.trim() || undefined,
-          voltage: item.voltage,
-          serialNumber: item.serialNumber.trim() || undefined,
-          accessories: item.accessories.trim() || undefined,
-          reportedIssue: item.reportedIssue.trim(),
-        })),
+        items: items.map((item) => {
+          const categoryChecklist = resolveChecklistForCategory(
+            settingsQuery.data?.intakeChecklistTemplates,
+            item.applianceType
+          );
+          const intakeChecklist =
+            categoryChecklist.length > 0 && item.checkedLabels.length > 0
+              ? categoryChecklist.map((label) => ({
+                  label,
+                  checked: item.checkedLabels.includes(label),
+                }))
+              : undefined;
+          return {
+            applianceType: item.applianceType.trim(),
+            brand: item.brand.trim(),
+            model: item.model.trim() || undefined,
+            voltage: item.voltage,
+            serialNumber: item.serialNumber.trim() || undefined,
+            accessories: item.accessories.trim() || undefined,
+            reportedIssue: item.reportedIssue.trim(),
+            intakeChecklist,
+          };
+        }),
       }),
     onSuccess: async (created) => {
       await Promise.all([
@@ -333,7 +353,9 @@ function NewOrderFormInner() {
                     list="appliance-types-list"
                     required
                     value={item.applianceType}
-                    onChange={(e) => updateItem(item.id, { applianceType: e.target.value })}
+                    onChange={(e) =>
+                      updateItem(item.id, { applianceType: e.target.value, checkedLabels: [] })
+                    }
                     placeholder="Micro-ondas"
                     className={inputClassName}
                   />
@@ -405,6 +427,64 @@ function NewOrderFormInner() {
                   />
                 </Field>
               </div>
+
+              {(() => {
+                const checklistLabels = resolveChecklistForCategory(
+                  settingsQuery.data?.intakeChecklistTemplates,
+                  item.applianceType
+                );
+                if (checklistLabels.length === 0) return null;
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                        <ClipboardCheck className="h-4 w-4 text-blue-600" />
+                        {locale === 'en'
+                          ? 'Quick Intake Checklist (optional)'
+                          : 'Checklist rápido de recebimento (opcional)'}
+                      </div>
+                      {item.checkedLabels.length > 0 && (
+                        <span className="font-mono text-[11px] font-semibold text-emerald-700">
+                          {item.checkedLabels.length}/{checklistLabels.length}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {checklistLabels.map((label) => {
+                        const checked = item.checkedLabels.includes(label);
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => {
+                              const next = checked
+                                ? item.checkedLabels.filter((x) => x !== label)
+                                : [...item.checkedLabels, label];
+                              updateItem(item.id, { checkedLabels: next });
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                              checked
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50/40'
+                            }`}
+                          >
+                            <span
+                              className={`flex h-4 w-4 items-center justify-center rounded border ${
+                                checked
+                                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                                  : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {checked && <Check className="h-3 w-3" />}
+                            </span>
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <Field label={locale === 'en' ? 'Reported issue' : 'Defeito relatado pelo cliente'} required>
                 <textarea

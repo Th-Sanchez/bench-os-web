@@ -12,15 +12,18 @@ import {
   FileText,
   MessageCircle,
   Pencil,
+  PenTool,
   Printer,
   ShieldCheck,
   Sparkles,
+  Star,
   Tag,
   User,
   X,
 } from 'lucide-react';
 import { DeliverSplitModal } from '@/components/orders/DeliverSplitModal';
 import { QuoteEditModal } from '@/components/orders/QuoteEditModal';
+import { toSignatureDataUri } from '@/components/orders/SignaturePad';
 import { WarrantyReturnModal } from '@/components/orders/WarrantyReturnModal';
 import { WhatsappStageModal } from '@/components/orders/WhatsappStageModal';
 import { PrintableOrderLabels, PrintableWarrantyReceipt } from '@/components/print/PrintViews';
@@ -373,6 +376,29 @@ export default function OrderDetailPage({
                   </div>
                 )}
 
+                {activeItem.intakeChecklist && activeItem.intakeChecklist.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      {locale === 'en' ? 'Intake checklist' : 'Checklist de recebimento'}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {activeItem.intakeChecklist.map((entry) => (
+                        <span
+                          key={entry.label}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                            entry.checked
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-slate-200 bg-slate-50 text-slate-500'
+                          }`}
+                        >
+                          <span>{entry.checked ? '✓' : '✕'}</span>
+                          {entry.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {activeItem.cancellationReason && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
                     <strong>{locale === 'en' ? 'Cancellation reason:' : 'Motivo do cancelamento:'}</strong>{' '}
@@ -593,6 +619,68 @@ export default function OrderDetailPage({
                     {locale === 'en' ? 'No payment recorded (R$ 0.00).' : 'Sem cobrança registrada (R$ 0,00).'}
                   </p>
                 )}
+
+                {toSignatureDataUri(activeItem.deliverySignatureSvg) && (
+                  <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <PenTool className="h-3.5 w-3.5 text-blue-600" />
+                      {locale === 'en' ? 'Pickup Signature' : 'Assinatura na Retirada'}
+                    </p>
+                    <div className="flex h-20 items-center justify-center rounded-lg border border-slate-200 bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={toSignatureDataUri(activeItem.deliverySignatureSvg)}
+                        alt="Assinatura digital na retirada"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    {activeItem.deliverySignerName && (
+                      <p className="text-xs text-slate-500">
+                        {locale === 'en' ? 'Picked up by:' : 'Retirado por:'}{' '}
+                        <strong className="text-slate-700">{activeItem.deliverySignerName}</strong>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {order.customerRating != null && (
+              <Card className="border-amber-200 bg-amber-50/40 p-5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900">
+                    <Star className="h-4 w-4 fill-amber-400 text-amber-500" />
+                    {locale === 'en' ? 'Customer Rating' : 'Avaliação do Cliente'}
+                  </h3>
+                  <div className="flex items-center gap-0.5" aria-label={`${order.customerRating}/5`}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star
+                        key={n}
+                        className={`h-4 w-4 ${
+                          n <= (order.customerRating ?? 0)
+                            ? 'fill-amber-400 text-amber-500'
+                            : 'text-slate-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                {order.customerFeedback ? (
+                  <p className="rounded-lg border border-amber-200/80 bg-white p-3 text-sm italic text-slate-700">
+                    &ldquo;{order.customerFeedback}&rdquo;
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-600">
+                    {locale === 'en'
+                      ? `Customer rated ${order.customerRating}/5 stars on the public tracking page.`
+                      : `Cliente avaliou com ${order.customerRating}/5 estrelas na página /track.`}
+                  </p>
+                )}
+                {order.customerRatedAt && (
+                  <p className="text-[11px] text-slate-500">
+                    {formatDateTime(order.customerRatedAt, locale)}
+                  </p>
+                )}
               </Card>
             )}
 
@@ -638,6 +726,7 @@ export default function OrderDetailPage({
         onClose={() => setDeliverModalOpen(false)}
         orderId={orderId}
         item={activeItem}
+        customerName={order.customerName}
       />
 
       <WarrantyReturnModal
