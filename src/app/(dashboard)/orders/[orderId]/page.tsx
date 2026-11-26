@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { DeliverSplitModal } from '@/components/orders/DeliverSplitModal';
+import { ItemPartRequestsCard } from '@/components/orders/ItemPartRequestsCard';
 import { QuoteEditModal } from '@/components/orders/QuoteEditModal';
 import { toSignatureDataUri } from '@/components/orders/SignaturePad';
 import { WarrantyReturnModal } from '@/components/orders/WarrantyReturnModal';
@@ -474,6 +475,9 @@ export default function OrderDetailPage({
                 )}
               </div>
             </Card>
+
+            {/* Required Parts Queue for this Item */}
+            <ItemPartRequestsCard orderId={orderId} item={activeItem} />
 
             {/* Read-only Photo Gallery */}
             <Card className="p-5 space-y-3">

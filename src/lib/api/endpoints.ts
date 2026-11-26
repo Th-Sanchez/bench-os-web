@@ -1,7 +1,9 @@
 import { apiRequest, bffAuthRequest } from './http';
 import type {
+  ArrivePartRequestRequest,
   ClientSession,
   CreateFinancialTransactionRequest,
+  CreatePartRequestRequest,
   CreateServiceOrderRequest,
   CreateUserRequest,
   CreateWarrantyReturnRequest,
@@ -15,10 +17,14 @@ import type {
   ItemPhotoResponse,
   ItemStatus,
   LoginRequest,
+  MarkPartOrderedRequest,
   MessageResponse,
   OrderItemQueueResponse,
   PageResponse,
   PartCatalogResponse,
+  PartRequestResponse,
+  PartRequestStatus,
+  PartRequestSummaryResponse,
   RegisterTenantRequest,
   RepairProfitabilityResponse,
   ResetPasswordRequest,
@@ -32,6 +38,7 @@ import type {
   TransactionType,
   TransitionItemStatusRequest,
   UpdateItemQuoteRequest,
+  UpdatePartRequestRequest,
   UpdateShopBrandingRequest,
   UpdateTenantSettingsRequest,
   UpsertCustomerRequest,
@@ -213,6 +220,53 @@ export const partsCatalogApi = {
 
   seedDefaults: () =>
     apiRequest<PartCatalogResponse[]>('/api/v1/parts-catalog/seed-defaults', { method: 'POST' }),
+};
+
+export const partRequestsApi = {
+  listForItem: (orderId: string, itemId: string) =>
+    apiRequest<PartRequestResponse[]>(`/api/v1/orders/${orderId}/items/${itemId}/part-requests`),
+
+  createForItem: (orderId: string, itemId: string, payload: CreatePartRequestRequest) =>
+    apiRequest<PartRequestResponse>(`/api/v1/orders/${orderId}/items/${itemId}/part-requests`, {
+      method: 'POST',
+      body: payload,
+    }),
+
+  listQueue: (params?: {
+    status?: PartRequestStatus[];
+    query?: string;
+    page?: number;
+    size?: number;
+  }) =>
+    apiRequest<PageResponse<PartRequestResponse>>('/api/v1/part-requests', { query: params }),
+
+  getSummary: () => apiRequest<PartRequestSummaryResponse>('/api/v1/part-requests/summary'),
+
+  update: (id: string, payload: UpdatePartRequestRequest) =>
+    apiRequest<PartRequestResponse>(`/api/v1/part-requests/${id}`, {
+      method: 'PUT',
+      body: payload,
+    }),
+
+  markOrdered: (id: string, payload?: MarkPartOrderedRequest) =>
+    apiRequest<PartRequestResponse>(`/api/v1/part-requests/${id}/order`, {
+      method: 'POST',
+      body: payload ?? {},
+    }),
+
+  reopen: (id: string) =>
+    apiRequest<PartRequestResponse>(`/api/v1/part-requests/${id}/reopen`, {
+      method: 'POST',
+    }),
+
+  markArrived: (id: string, payload?: ArrivePartRequestRequest) =>
+    apiRequest<PartRequestResponse>(`/api/v1/part-requests/${id}/arrive`, {
+      method: 'POST',
+      body: payload ?? {},
+    }),
+
+  remove: (id: string) =>
+    apiRequest<void>(`/api/v1/part-requests/${id}`, { method: 'DELETE' }),
 };
 
 export const photosApi = {

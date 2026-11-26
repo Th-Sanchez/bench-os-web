@@ -17,6 +17,8 @@ export type ItemStatus =
 
 export type OrderPaymentMethod = 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH';
 
+export type PartRequestStatus = 'TO_ORDER' | 'ORDERED' | 'ARRIVED' | 'CANCELLED';
+
 export type PhotoStage = 'INTAKE' | 'DIAGNOSIS' | 'COMPLETED';
 
 export type WhatsappMessageStage = 'INTAKE' | 'QUOTE' | 'READY';
@@ -323,6 +325,78 @@ export interface UpsertPartCatalogRequest {
   averageCost: number;
   suggestedPrice: number;
   notes?: string;
+}
+
+export interface PartRequestResponse {
+  id: string;
+  serviceOrderId: string;
+  serviceOrderItemId: string;
+  orderNumber: number;
+  itemIndex: number;
+  itemTag: string;
+  itemStatus: ItemStatus;
+  applianceDisplayName: string;
+  customerName: string | null;
+  partCatalogId: string | null;
+  partName: string;
+  quantity: number;
+  estimatedUnitCost: number;
+  estimatedTotalCost: number;
+  actualUnitCost: number | null;
+  effectiveTotalCost: number;
+  supplierName: string | null;
+  purchaseUrl: string | null;
+  notes: string | null;
+  status: PartRequestStatus;
+  expenseRecorded: boolean;
+  orderedAt: string | null;
+  arrivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PartRequestSummaryResponse {
+  toOrderCount: number;
+  orderedCount: number;
+  arrivedCount: number;
+  estimatedToOrderCost: number;
+  estimatedOrderedCost: number;
+}
+
+export interface CreatePartRequestRequest {
+  partCatalogId?: string;
+  partName?: string;
+  quantity?: number;
+  estimatedUnitCost?: number;
+  supplierName?: string;
+  purchaseUrl?: string;
+  notes?: string;
+  moveItemToWaitingParts?: boolean;
+}
+
+export interface UpdatePartRequestRequest {
+  partName: string;
+  quantity?: number;
+  estimatedUnitCost?: number;
+  actualUnitCost?: number;
+  supplierName?: string;
+  purchaseUrl?: string;
+  notes?: string;
+}
+
+export interface MarkPartOrderedRequest {
+  supplierName?: string;
+  purchaseUrl?: string;
+  actualUnitCost?: number;
+  notes?: string;
+}
+
+export interface ArrivePartRequestRequest {
+  actualUnitCost?: number;
+  addToItemPartsCost?: boolean;
+  moveItemToInRepair?: boolean;
+  recordExpense?: boolean;
+  paymentMethod?: OrderPaymentMethod;
 }
 
 export interface RepairProfitabilityResponse {
