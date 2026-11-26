@@ -9,6 +9,7 @@ import {
   PenTool,
   Plus,
   Printer,
+  QrCode,
   RotateCcw,
   Save,
   Shield,
@@ -121,6 +122,9 @@ export default function SettingsPage() {
   const [waReadyDraft, setWaReadyDraft] = useState<string | null>(null);
   const [googleReviewUrlDraft, setGoogleReviewUrlDraft] = useState<string | null>(null);
   const [deliverySignatureDraft, setDeliverySignatureDraft] = useState<boolean | null>(null);
+  const [pixKeyDraft, setPixKeyDraft] = useState<string | null>(null);
+  const [pixReceiverNameDraft, setPixReceiverNameDraft] = useState<string | null>(null);
+  const [pixReceiverCityDraft, setPixReceiverCityDraft] = useState<string | null>(null);
   const [newApplianceType, setNewApplianceType] = useState('');
   const [selectedChecklistCategory, setSelectedChecklistCategory] = useState('Micro-ondas');
   const [newChecklistItem, setNewChecklistItem] = useState('');
@@ -147,6 +151,9 @@ export default function SettingsPage() {
   const googleReviewUrl = googleReviewUrlDraft ?? (serverSettings?.googleReviewUrl ?? '');
   const deliverySignatureEnabled =
     deliverySignatureDraft ?? Boolean(serverSettings?.deliverySignatureEnabled);
+  const pixKey = pixKeyDraft ?? (serverSettings?.pixKey ?? '');
+  const pixReceiverName = pixReceiverNameDraft ?? (serverSettings?.pixReceiverName ?? '');
+  const pixReceiverCity = pixReceiverCityDraft ?? (serverSettings?.pixReceiverCity ?? '');
 
   const templateRefs = useRef<Record<WhatsappMessageStage, HTMLTextAreaElement | null>>({
     INTAKE: null,
@@ -214,6 +221,9 @@ export default function SettingsPage() {
         whatsappReadyTemplate: toApiTemplate(waReady.trim()) || undefined,
         googleReviewUrl: googleReviewUrl.trim(),
         deliverySignatureEnabled,
+        pixKey: pixKey.trim(),
+        pixReceiverName: pixReceiverName.trim(),
+        pixReceiverCity: pixReceiverCity.trim(),
       }),
     onSuccess: async () => {
       setDefaultLaborDraft(null);
@@ -224,6 +234,9 @@ export default function SettingsPage() {
       setWaReadyDraft(null);
       setGoogleReviewUrlDraft(null);
       setDeliverySignatureDraft(null);
+      setPixKeyDraft(null);
+      setPixReceiverNameDraft(null);
+      setPixReceiverCityDraft(null);
       await queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
       toast.success(locale === 'en' ? 'Settings saved' : 'Configurações salvas!');
     },
@@ -534,6 +547,75 @@ export default function SettingsPage() {
                   className={inputClassName}
                 />
               </Field>
+
+              <div className="rounded-xl border border-teal-200/80 bg-teal-50/40 p-4 space-y-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <QrCode className="h-4 w-4 text-teal-700" />
+                    {locale === 'en'
+                      ? 'Direct Pix QR Code (Optional · Zero Fee)'
+                      : 'QR Code Pix Direto para a Conta da Oficina (Opcional)'}
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    {locale === 'en'
+                      ? 'Configure your Pix key to automatically generate a BR Code QR & Copy-Paste with the exact order value on /track and the delivery screen.'
+                      : 'Informe a chave Pix da oficina para gerar QR Code e Copia e Cola com o valor exato na página /track (quando pronto) e na tela de entrega. Deixe em branco para desativar.'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field
+                    label={locale === 'en' ? 'Pix key' : 'Chave Pix'}
+                    hint={
+                      locale === 'en'
+                        ? 'CPF/CNPJ (digits), e-mail, random key or phone with +55'
+                        : 'CPF/CNPJ (só números), e-mail, chave aleatória ou celular com +55'
+                    }
+                  >
+                    <input
+                      type="text"
+                      maxLength={77}
+                      value={pixKey}
+                      onChange={(e) => setPixKeyDraft(e.target.value)}
+                      placeholder="12345678000199 ou +5511999998888"
+                      className={`${inputClassName} font-mono`}
+                    />
+                  </Field>
+                  <Field
+                    label={locale === 'en' ? 'Receiver name (optional)' : 'Nome do recebedor (opcional)'}
+                    hint={
+                      locale === 'en'
+                        ? 'Defaults to shop name (max 25 ASCII chars in BR Code)'
+                        : 'Se vazio, usa o nome da oficina'
+                    }
+                  >
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={pixReceiverName}
+                      onChange={(e) => setPixReceiverNameDraft(e.target.value)}
+                      placeholder={session?.tenant.name ?? 'Oficina'}
+                      className={inputClassName}
+                    />
+                  </Field>
+                  <Field
+                    label={locale === 'en' ? 'City (optional)' : 'Cidade (opcional)'}
+                    hint={
+                      locale === 'en'
+                        ? 'Defaults to BRASIL'
+                        : 'Se vazio, usa BRASIL'
+                    }
+                  >
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={pixReceiverCity}
+                      onChange={(e) => setPixReceiverCityDraft(e.target.value)}
+                      placeholder="Sao Paulo"
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <div className="space-y-0.5">
