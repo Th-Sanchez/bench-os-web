@@ -5,6 +5,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Banknote,
+  BarChart3,
   Building2,
   CheckCircle2,
   ChevronLeft,
@@ -24,6 +25,7 @@ import {
   SuppliersDrawer,
   TransactionFormModal,
 } from '@/components/finance/FinanceModals';
+import { WorkshopAnalyticsPanel } from '@/components/finance/WorkshopAnalyticsPanel';
 import { Button, Card, EmptyState, Spinner } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
 import { financeApi, ordersApi } from '@/lib/api/endpoints';
@@ -55,6 +57,7 @@ export default function FinancePage() {
   const [txTypeFilter, setTxTypeFilter] = useState<TransactionType | 'ALL'>('ALL');
   const [txStatusFilter, setTxStatusFilter] = useState<TransactionStatus | 'ALL'>('ALL');
   const [page, setPage] = useState(0);
+  const [activeTab, setActiveTab] = useState<'cashflow' | 'indicators'>('cashflow');
 
   const [txModalOpen, setTxModalOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<FinancialTransactionResponse | null>(null);
@@ -101,6 +104,12 @@ export default function FinancePage() {
   const profitabilityQuery = useQuery({
     queryKey: ['finance', 'profitability', from, to],
     queryFn: () => ordersApi.getProfitability({ from, to, zone: 'America/Sao_Paulo' }),
+    enabled: allowed,
+  });
+
+  const analyticsQuery = useQuery({
+    queryKey: ['finance', 'analytics', from, to],
+    queryFn: () => ordersApi.getAnalytics({ from, to, zone: 'America/Sao_Paulo' }),
     enabled: allowed,
   });
 
@@ -239,6 +248,46 @@ export default function FinancePage() {
           </div>
         </div>
 
+        {/* Finance Tabs: Cash Flow vs. Actionable Workshop Indicators */}
+        <div className="flex gap-1 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab('cashflow')}
+            className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'cashflow'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Wallet className="h-4 w-4" />
+            {locale === 'en' ? 'Cash Flow & Ledger' : 'Caixa & Extrato'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('indicators')}
+            className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'indicators'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            {locale === 'en' ? 'Workshop Indicators' : 'Indicadores da Oficina'}
+            {(analyticsQuery.data?.overdueActiveCount ?? 0) > 0 && (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">
+                {analyticsQuery.data?.overdueActiveCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'indicators' ? (
+          <WorkshopAnalyticsPanel
+            analytics={analyticsQuery.data}
+            loading={analyticsQuery.isLoading}
+          />
+        ) : (
+        <>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="p-4">
@@ -477,6 +526,8 @@ export default function FinancePage() {
             </div>
           )}
         </Card>
+        </>
+        )}
       </div>
 
       {/* Printable A4 Financial Report / Daily Closing */}

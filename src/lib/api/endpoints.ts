@@ -47,6 +47,7 @@ import type {
   UserResponse,
   WhatsappLinkResponse,
   WhatsappMessageStage,
+  WorkshopAnalyticsResponse,
 } from '@/lib/types/api';
 
 export interface SessionStatusResponse {
@@ -156,6 +157,9 @@ export const ordersApi = {
 
   getProfitability: (params?: { from?: string; to?: string; zone?: string }) =>
     apiRequest<RepairProfitabilityResponse>('/api/v1/orders/profitability', { query: params }),
+
+  getAnalytics: (params?: { from?: string; to?: string; zone?: string }) =>
+    apiRequest<WorkshopAnalyticsResponse>('/api/v1/orders/analytics', { query: params }),
 
   listBenchQueue: (params?: {
     status?: ItemStatus[];

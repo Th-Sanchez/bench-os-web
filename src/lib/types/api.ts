@@ -411,6 +411,37 @@ export interface RepairProfitabilityResponse {
   profitMarginPercent: number;
 }
 
+export interface WorkshopAnalyticsResponse {
+  periodStart: string;
+  periodEnd: string;
+  zone: string;
+  quotesSentCount: number;
+  quotesApprovedCount: number;
+  quotesRejectedCount: number;
+  quotesPendingCount: number;
+  quoteApprovalRatePercent: number | null;
+  avgIntakeToQuoteHours: number | null;
+  intakeToQuoteSampleSize: number;
+  avgApprovalToReadyHours: number | null;
+  approvalToReadySampleSize: number;
+  avgTotalTurnaroundHours: number | null;
+  deliveredItemsCount: number;
+  paidRepairsCount: number;
+  totalRevenue: number;
+  totalPartsCostActual: number;
+  netRepairProfit: number;
+  netProfitMarginPercent: number;
+  averageTicket: number;
+  itemsReceivedCount: number;
+  warrantyReturnsCount: number;
+  warrantyReturnRatePercent: number;
+  overdueActiveCount: number;
+  awaitingQuoteCount: number;
+  awaitingApprovalCount: number;
+  waitingPartsCount: number;
+  readyForPickupCount: number;
+}
+
 export interface TransitionItemStatusRequest {
   status: ItemStatus;
   cancellationReason?: string;
