@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardCheck,
   Globe,
+  ImagePlus,
   KeyRound,
   PenTool,
   Plus,
@@ -14,6 +15,7 @@ import {
   Save,
   Shield,
   Tag,
+  Trash2,
   UserCheck,
   UserPlus,
   UserX,
@@ -91,6 +93,39 @@ function toApiTemplate(displayTemplate: string): string {
   return result;
 }
 
+function resizeImageFileToDataUrl(file: File, maxSize = 256): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem selecionada.'));
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error('Arquivo de imagem inválido.'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Navegador sem suporte a canvas.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const preferredMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        let dataUrl = canvas.toDataURL(preferredMime, 0.85);
+        if (dataUrl.length > 220_000) {
+          dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+        }
+        resolve(dataUrl);
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SettingsPage() {
   const { locale, setLocale, t } = useI18n();
   const { session } = useAuth();
@@ -125,6 +160,11 @@ export default function SettingsPage() {
   const [pixKeyDraft, setPixKeyDraft] = useState<string | null>(null);
   const [pixReceiverNameDraft, setPixReceiverNameDraft] = useState<string | null>(null);
   const [pixReceiverCityDraft, setPixReceiverCityDraft] = useState<string | null>(null);
+  const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
+  const [shopAddressDraft, setShopAddressDraft] = useState<string | null>(null);
+  const [businessHoursDraft, setBusinessHoursDraft] = useState<string | null>(null);
+  const [warrantyTermsDraft, setWarrantyTermsDraft] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [newApplianceType, setNewApplianceType] = useState('');
   const [selectedChecklistCategory, setSelectedChecklistCategory] = useState('Micro-ondas');
   const [newChecklistItem, setNewChecklistItem] = useState('');
@@ -154,6 +194,10 @@ export default function SettingsPage() {
   const pixKey = pixKeyDraft ?? (serverSettings?.pixKey ?? '');
   const pixReceiverName = pixReceiverNameDraft ?? (serverSettings?.pixReceiverName ?? '');
   const pixReceiverCity = pixReceiverCityDraft ?? (serverSettings?.pixReceiverCity ?? '');
+  const currentLogoUrl = logoDraft !== undefined ? logoDraft : (serverSettings?.shopLogoDataUrl ?? null);
+  const shopAddress = shopAddressDraft ?? (serverSettings?.shopAddress ?? '');
+  const businessHours = businessHoursDraft ?? (serverSettings?.businessHours ?? '');
+  const warrantyTerms = warrantyTermsDraft ?? (serverSettings?.warrantyTerms ?? '');
 
   const templateRefs = useRef<Record<WhatsappMessageStage, HTMLTextAreaElement | null>>({
     INTAKE: null,
@@ -310,6 +354,52 @@ export default function SettingsPage() {
       toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
     },
   });
+
+  const saveBrandingMutation = useMutation({
+    mutationFn: () =>
+      tenantSettingsApi.updateBranding({
+        shopLogoDataUrl: logoDraft === undefined ? undefined : (logoDraft ?? undefined),
+        clearLogo: logoDraft === null ? true : undefined,
+        shopAddress: shopAddress.trim(),
+        businessHours: businessHours.trim(),
+        warrantyTerms: warrantyTerms.trim(),
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant-settings'], updated);
+      setLogoDraft(undefined);
+      setShopAddressDraft(null);
+      setBusinessHoursDraft(null);
+      setWarrantyTermsDraft(null);
+      toast.success(
+        locale === 'en'
+          ? 'Shop branding & terms saved!'
+          : 'Identidade visual e termos salvos!'
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  async function handleLogoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error(
+        locale === 'en'
+          ? 'Use a PNG, JPG or WebP image.'
+          : 'Selecione uma imagem PNG, JPG ou WebP.'
+      );
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageFileToDataUrl(file, 256);
+      setLogoDraft(dataUrl);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t.common.errorGeneric);
+    }
+  }
 
   function mutateCategoryChecklist(nextItems: string[]) {
     const nextMap: Record<string, string[]> = {};
@@ -713,6 +803,149 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </Card>
+      )}
+
+      {/* Shop Branding & Custom Warranty Terms (OWNER only) */}
+      {isOwnerRole && (
+        <Card className="p-5 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="flex items-center gap-2 font-display text-base font-bold text-slate-900">
+                <ImagePlus className="h-4 w-4 text-blue-600" />
+                {locale === 'en'
+                  ? 'Shop Branding, Address & Warranty Terms'
+                  : 'Identidade Visual, Endereço & Termo de Garantia'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {locale === 'en'
+                  ? 'Displayed to customers on /track, digital receipt, and printed A4 warranty certificate.'
+                  : 'Exibido para o cliente na página /track, no comprovante digital e na impressão A4 da garantia.'}
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={saveBrandingMutation.isPending}
+              onClick={() => saveBrandingMutation.mutate()}
+            >
+              <Save className="h-3.5 w-3.5" />
+              {locale === 'en' ? 'Save branding' : 'Salvar identidade'}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+            {/* Logo Picker */}
+            <div className="space-y-3 lg:col-span-4">
+              <p className="text-xs font-semibold text-slate-700">
+                {locale === 'en' ? 'Workshop Logo (optional)' : 'Logo da Oficina (opcional)'}
+              </p>
+              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                {currentLogoUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={currentLogoUrl}
+                    alt="Logo da oficina"
+                    className="h-16 w-16 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-400">
+                    <ImagePlus className="h-6 w-6" />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => void handleLogoFileChange(e)}
+                    className="hidden"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                    >
+                      {currentLogoUrl
+                        ? locale === 'en'
+                          ? 'Change'
+                          : 'Trocar'
+                        : locale === 'en'
+                          ? 'Upload PNG/JPG'
+                          : 'Enviar logo'}
+                    </Button>
+                    {currentLogoUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={() => setLogoDraft(null)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {locale === 'en'
+                      ? 'Auto-resized to 256×256 (PNG/JPG/WebP).'
+                      : 'Redimensionada automaticamente (PNG, JPG ou WebP).'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Address, Hours & Custom Warranty Terms */}
+            <div className="space-y-3.5 lg:col-span-8">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <Field label={locale === 'en' ? 'Shop address (optional)' : 'Endereço da oficina (opcional)'}>
+                  <input
+                    type="text"
+                    maxLength={300}
+                    value={shopAddress}
+                    onChange={(e) => setShopAddressDraft(e.target.value)}
+                    placeholder="Ex.: Rua das Flores, 123 - Centro, São Paulo/SP"
+                    className={inputClassName}
+                  />
+                </Field>
+                <Field label={locale === 'en' ? 'Business hours (optional)' : 'Horário de atendimento (opcional)'}>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={businessHours}
+                    onChange={(e) => setBusinessHoursDraft(e.target.value)}
+                    placeholder="Ex.: Seg a Sex 8h30–18h · Sáb 8h30–13h"
+                    className={inputClassName}
+                  />
+                </Field>
+              </div>
+              <Field
+                label={
+                  locale === 'en'
+                    ? 'Custom Warranty / Service Terms (optional)'
+                    : 'Termo de Garantia / Serviço personalizado (opcional)'
+                }
+                hint={
+                  locale === 'en'
+                    ? 'Leave blank to use the standard BenchOS warranty clauses on receipts.'
+                    : 'Deixe em branco para usar o termo padrão do BenchOS nos comprovantes.'
+                }
+              >
+                <textarea
+                  rows={4}
+                  maxLength={3000}
+                  value={warrantyTerms}
+                  onChange={(e) => setWarrantyTermsDraft(e.target.value)}
+                  placeholder={
+                    locale === 'en'
+                      ? '1. Warranty covers exclusively the repaired defect...'
+                      : 'Ex.: 1. A garantia cobre exclusivamente o defeito consertado e as peças trocadas...\n2. Não cobre mau uso, quedas ou ligação em voltagem incorreta...'
+                  }
+                  className={inputClassName}
+                />
+              </Field>
+            </div>
+          </div>
         </Card>
       )}
 

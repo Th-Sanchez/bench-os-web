@@ -7,6 +7,7 @@ import type {
   ItemPaymentSummaryResponse,
   ServiceOrderResponse,
   TenantResponse,
+  TenantSettingsResponse,
 } from '@/lib/types/api';
 import type { LabelPrintFormat } from '@/lib/settings/PrintPreferencesContext';
 import { formatBRL, formatDate, formatDateTime, maskCpfCnpj, maskPhoneBR } from '@/lib/utils/masks';
@@ -116,10 +117,12 @@ export function PrintableOrderLabels({
 export function PrintableWarrantyReceipt({
   order,
   tenant,
+  settings,
   paymentsByItem,
 }: {
   order: ServiceOrderResponse;
   tenant: TenantResponse | null;
+  settings?: TenantSettingsResponse | null;
   paymentsByItem: Record<string, ItemPaymentSummaryResponse[]>;
 }) {
   const deliveredItems = order.items.filter((i) => i.status === 'DELIVERED');
@@ -142,10 +145,22 @@ export function PrintableWarrantyReceipt({
   return (
     <div className="print-only text-black text-xs leading-relaxed">
       <div className="flex items-start justify-between border-b-2 border-black pb-3">
-        <div>
-          <h1 className="text-lg font-bold uppercase">{tenant?.name ?? 'BenchOS'}</h1>
-          {tenant?.document && <p>CNPJ/CPF: {maskCpfCnpj(tenant.document)}</p>}
-          {tenant?.phone && <p>Tel/WhatsApp: {maskPhoneBR(tenant.phone)}</p>}
+        <div className="flex items-center gap-3">
+          {settings?.shopLogoDataUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={settings.shopLogoDataUrl}
+              alt="Logo da oficina"
+              className="h-14 w-14 rounded-lg border border-slate-300 object-contain p-0.5"
+            />
+          )}
+          <div>
+            <h1 className="text-lg font-bold uppercase">{tenant?.name ?? 'BenchOS'}</h1>
+            {tenant?.document && <p>CNPJ/CPF: {maskCpfCnpj(tenant.document)}</p>}
+            {tenant?.phone && <p>Tel/WhatsApp: {maskPhoneBR(tenant.phone)}</p>}
+            {settings?.shopAddress && <p>{settings.shopAddress}</p>}
+            {settings?.businessHours && <p>Horário: {settings.businessHours}</p>}
+          </div>
         </div>
         <div className="text-right">
           <p className="font-mono text-base font-bold">OS #{order.orderNumber}</p>
@@ -208,11 +223,18 @@ export function PrintableWarrantyReceipt({
         <span className="font-mono">{formatBRL(grandTotal)}</span>
       </div>
 
-      <p className="mt-4 text-[10px] text-slate-700">
-        Termo de Garantia: A garantia cobre exclusivamente o defeito/serviço descrito acima pelo
-        prazo indicado a contar da data de entrega, não cobrindo mau uso, quedas, ligação em
-        voltagem incorreta ou violação do aparelho por terceiros.
-      </p>
+      {settings?.warrantyTerms?.trim() ? (
+        <div className="mt-4 whitespace-pre-wrap text-[10px] text-slate-700">
+          <strong>Termo de Garantia:</strong>{'\n'}
+          {settings.warrantyTerms.trim()}
+        </div>
+      ) : (
+        <p className="mt-4 text-[10px] text-slate-700">
+          Termo de Garantia: A garantia cobre exclusivamente o defeito/serviço descrito acima pelo
+          prazo indicado a contar da data de entrega, não cobrindo mau uso, quedas, ligação em
+          voltagem incorreta ou violação do aparelho por terceiros.
+        </p>
+      )}
 
       <div className="mt-8 grid grid-cols-2 items-end gap-8 text-center text-[11px] print-break-avoid">
         <div>

@@ -708,6 +708,7 @@ export default function OrderDetailPage({
         <PrintableWarrantyReceipt
           order={order}
           tenant={session?.tenant ?? null}
+          settings={settingsQuery.data ?? null}
           paymentsByItem={paymentsByItem}
         />
       )}

@@ -32,6 +32,7 @@ import type {
   TransactionType,
   TransitionItemStatusRequest,
   UpdateItemQuoteRequest,
+  UpdateShopBrandingRequest,
   UpdateTenantSettingsRequest,
   UpsertCustomerRequest,
   UpsertPartCatalogRequest,
@@ -100,6 +101,11 @@ export const tenantSettingsApi = {
   resetIntakeChecklists: () =>
     apiRequest<TenantSettingsResponse>('/api/v1/tenant/settings/intake-checklists', {
       method: 'DELETE',
+    }),
+  updateBranding: (payload: UpdateShopBrandingRequest) =>
+    apiRequest<TenantSettingsResponse>('/api/v1/tenant/settings/branding', {
+      method: 'PUT',
+      body: payload,
     }),
 };
 
