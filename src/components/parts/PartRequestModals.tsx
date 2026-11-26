@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, PackageCheck, ShoppingCart } from 'lucide-react';
 import { Button, Field, Modal, inputClassName } from '@/components/ui/Primitives';
@@ -71,7 +71,12 @@ interface PartRequestFormModalProps {
   editing?: PartRequestResponse | null;
 }
 
-export function PartRequestFormModal({
+export function PartRequestFormModal(props: PartRequestFormModalProps) {
+  if (!props.open) return null;
+  return <PartRequestFormModalContent key={props.editing?.id ?? 'new'} {...props} />;
+}
+
+function PartRequestFormModalContent({
   open,
   onClose,
   orderId,
@@ -86,15 +91,21 @@ export function PartRequestFormModal({
   const queryClient = useQueryClient();
   const owner = isOwner(session?.user.role);
 
-  const [partCatalogId, setPartCatalogId] = useState<string>('');
-  const [partName, setPartName] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [estimatedCostInput, setEstimatedCostInput] = useState('');
-  const [actualCostInput, setActualCostInput] = useState('');
-  const [supplierName, setSupplierName] = useState('');
-  const [purchaseUrl, setPurchaseUrl] = useState('');
-  const [notes, setNotes] = useState('');
-  const [moveToWaitingParts, setMoveToWaitingParts] = useState(true);
+  const [partCatalogId, setPartCatalogId] = useState<string>(() => editing?.partCatalogId ?? '');
+  const [partName, setPartName] = useState(() => editing?.partName ?? '');
+  const [quantity, setQuantity] = useState(() => (editing ? String(editing.quantity) : '1'));
+  const [estimatedCostInput, setEstimatedCostInput] = useState(() =>
+    editing ? formatCurrencyInput(editing.estimatedUnitCost) : ''
+  );
+  const [actualCostInput, setActualCostInput] = useState(() =>
+    editing?.actualUnitCost != null ? formatCurrencyInput(editing.actualUnitCost) : ''
+  );
+  const [supplierName, setSupplierName] = useState(() => editing?.supplierName ?? '');
+  const [purchaseUrl, setPurchaseUrl] = useState(() => editing?.purchaseUrl ?? '');
+  const [notes, setNotes] = useState(() => editing?.notes ?? '');
+  const [moveToWaitingParts, setMoveToWaitingParts] = useState(
+    () => !editing && (itemStatus === 'APPROVED' || itemStatus === 'IN_REPAIR')
+  );
 
   const canMoveToWaiting =
     !editing && (itemStatus === 'APPROVED' || itemStatus === 'IN_REPAIR');
@@ -110,33 +121,6 @@ export function PartRequestFormModal({
     queryFn: () => financeApi.listSuppliers(),
     enabled: open && owner,
   });
-
-  useEffect(() => {
-    if (!open) return;
-    if (editing) {
-      setPartCatalogId(editing.partCatalogId ?? '');
-      setPartName(editing.partName);
-      setQuantity(String(editing.quantity));
-      setEstimatedCostInput(formatCurrencyInput(editing.estimatedUnitCost));
-      setActualCostInput(
-        editing.actualUnitCost != null ? formatCurrencyInput(editing.actualUnitCost) : ''
-      );
-      setSupplierName(editing.supplierName ?? '');
-      setPurchaseUrl(editing.purchaseUrl ?? '');
-      setNotes(editing.notes ?? '');
-      setMoveToWaitingParts(false);
-    } else {
-      setPartCatalogId('');
-      setPartName('');
-      setQuantity('1');
-      setEstimatedCostInput('');
-      setActualCostInput('');
-      setSupplierName('');
-      setPurchaseUrl('');
-      setNotes('');
-      setMoveToWaitingParts(itemStatus === 'APPROVED' || itemStatus === 'IN_REPAIR');
-    }
-  }, [open, editing, itemStatus]);
 
   function handleSelectCatalogPart(id: string) {
     setPartCatalogId(id);
@@ -400,31 +384,38 @@ interface ArrivePartRequestModalProps {
 const PAYMENT_METHODS: OrderPaymentMethod[] = ['PIX', 'DEBIT_CARD', 'CREDIT_CARD', 'CASH'];
 
 export function ArrivePartRequestModal({ request, onClose }: ArrivePartRequestModalProps) {
+  if (!request) return null;
+  return <ArrivePartRequestModalContent key={request.id} request={request} onClose={onClose} />;
+}
+
+function ArrivePartRequestModalContent({
+  request,
+  onClose,
+}: {
+  request: PartRequestResponse;
+  onClose: () => void;
+}) {
   const { locale, t } = useI18n();
   const { session } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
   const owner = isOwner(session?.user.role);
 
-  const [actualUnitCostInput, setActualUnitCostInput] = useState('');
+  const baseUnit = request.actualUnitCost ?? request.estimatedUnitCost;
+  const [actualUnitCostInput, setActualUnitCostInput] = useState(() =>
+    formatCurrencyInput(baseUnit)
+  );
   const [addToItemPartsCost, setAddToItemPartsCost] = useState(true);
-  const [moveItemToInRepair, setMoveItemToInRepair] = useState(true);
-  const [recordExpense, setRecordExpense] = useState(false);
+  const [moveItemToInRepair, setMoveItemToInRepair] = useState(
+    () => request.itemStatus === 'WAITING_PARTS'
+  );
+  const [recordExpense, setRecordExpense] = useState(
+    () => owner && baseUnit * request.quantity > 0
+  );
   const [paymentMethod, setPaymentMethod] = useState<OrderPaymentMethod>('PIX');
-
-  useEffect(() => {
-    if (!request) return;
-    const baseUnit = request.actualUnitCost ?? request.estimatedUnitCost;
-    setActualUnitCostInput(formatCurrencyInput(baseUnit));
-    setAddToItemPartsCost(true);
-    setMoveItemToInRepair(request.itemStatus === 'WAITING_PARTS');
-    setRecordExpense(owner && baseUnit * request.quantity > 0);
-    setPaymentMethod('PIX');
-  }, [request, owner]);
 
   const arriveMutation = useMutation({
     mutationFn: () => {
-      if (!request) throw new Error('Missing request');
       const unitCost = parseCurrencyBRL(actualUnitCostInput);
       const total = unitCost * request.quantity;
       return partRequestsApi.markArrived(request.id, {
@@ -464,11 +455,11 @@ export function ArrivePartRequestModal({ request, onClose }: ArrivePartRequestMo
   });
 
   const unitCostNum = parseCurrencyBRL(actualUnitCostInput);
-  const totalCostNum = request ? unitCostNum * request.quantity : 0;
+  const totalCostNum = unitCostNum * request.quantity;
 
   return (
     <Modal
-      open={Boolean(request)}
+      open
       onClose={onClose}
       size="md"
       title={locale === 'en' ? 'Confirm Part Arrival' : 'Dar Baixa — Peça Chegou'}
