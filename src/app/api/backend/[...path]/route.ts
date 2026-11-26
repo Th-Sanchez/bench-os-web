@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { captureServerBffError } from '@/lib/server/sentryServer';
 import { clearSessionCookie, readServerSession } from '@/lib/server/sessionCookie';
 import {
   getBackendApiUrl,
@@ -72,7 +73,14 @@ async function handleProxy(
       body,
       cache: 'no-store',
     });
-  } catch {
+  } catch (upstreamError) {
+    void captureServerBffError(upstreamError, {
+      route: targetPath,
+      method: request.method,
+      requestId,
+      tenantId: session.tenant.id,
+      status: 502,
+    });
     return NextResponse.json(
       {
         title: 'Bad Gateway',

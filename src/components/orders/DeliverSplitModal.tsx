@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import QRCode from 'qrcode';
+import { CheckCircle2, Copy, PenTool, Plus, QrCode, Trash2 } from 'lucide-react';
+import { SignaturePad } from '@/components/orders/SignaturePad';
 import { Button, Field, Modal, inputClassName } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ordersApi } from '@/lib/api/endpoints';
+import { ordersApi, tenantSettingsApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
+import { useAuth } from '@/lib/auth/AuthProvider';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import type { OrderPaymentMethod, ServiceOrderItemResponse } from '@/lib/types/api';
 import {
@@ -15,6 +18,7 @@ import {
   maskCurrencyBRL,
   parseCurrencyBRL,
 } from '@/lib/utils/masks';
+import { buildPixBrCode } from '@/lib/utils/pixBrCode';
 
 interface SplitRow {
   id: string;
@@ -28,16 +32,27 @@ function DeliverSplitInner({
   onClose,
   orderId,
   item,
+  customerName,
   onDelivered,
 }: {
   onClose: () => void;
   orderId: string;
   item: ServiceOrderItemResponse;
+  customerName?: string | null;
   onDelivered?: () => void;
 }) {
   const { locale, t } = useI18n();
+  const { session } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  const settingsQuery = useQuery({
+    queryKey: ['tenant-settings'],
+    queryFn: () => tenantSettingsApi.get(),
+    staleTime: 60_000,
+  });
+  const deliverySignatureEnabled = Boolean(settingsQuery.data?.deliverySignatureEnabled);
+  const configuredPixKey = settingsQuery.data?.pixKey?.trim() ?? '';
 
   const requiresPayment = item.status === 'READY_FOR_PICKUP' && item.totalPrice > 0;
   const [rows, setRows] = useState<SplitRow[]>(() =>
@@ -51,6 +66,52 @@ function DeliverSplitInner({
         ]
       : []
   );
+  const [showPixQr, setShowPixQr] = useState(false);
+  const [pixQrDataUrl, setPixQrDataUrl] = useState<string | null>(null);
+  const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState(customerName ?? '');
+
+  const pixAmount = useMemo(() => {
+    const sum = rows
+      .filter((r) => r.paymentMethod === 'PIX')
+      .reduce((acc, r) => acc + parseCurrencyBRL(r.amountInput), 0);
+    return Math.round(sum * 100) / 100;
+  }, [rows]);
+
+  const pixPayload = useMemo(() => {
+    if (!requiresPayment || !configuredPixKey || pixAmount <= 0) return null;
+    const orderNumPart = item.tag.split('-')[0] ?? item.tag;
+    return buildPixBrCode({
+      pixKey: configuredPixKey,
+      merchantName: settingsQuery.data?.pixReceiverName || session?.tenant.name || 'OFICINA',
+      merchantCity: settingsQuery.data?.pixReceiverCity || 'BRASIL',
+      amount: pixAmount,
+      txid: `OS${orderNumPart}`,
+    });
+  }, [
+    requiresPayment,
+    configuredPixKey,
+    pixAmount,
+    item.tag,
+    settingsQuery.data?.pixReceiverName,
+    settingsQuery.data?.pixReceiverCity,
+    session?.tenant.name,
+  ]);
+
+  useEffect(() => {
+    if (!showPixQr || !pixPayload) return;
+    let active = true;
+    void QRCode.toDataURL(pixPayload, { width: 220, margin: 1 })
+      .then((url) => {
+        if (active) setPixQrDataUrl(url);
+      })
+      .catch(() => {
+        if (active) setPixQrDataUrl(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showPixQr, pixPayload]);
 
   const paidSum =
     Math.round(rows.reduce((acc, row) => acc + parseCurrencyBRL(row.amountInput), 0) * 100) / 100;
@@ -71,8 +132,20 @@ function DeliverSplitInner({
   }
 
   const deliverMutation = useMutation({
-    mutationFn: () =>
-      ordersApi.deliverItem(
+    mutationFn: () => {
+      const trimmedSigner = signerName.trim();
+      const signaturePayload = !deliverySignatureEnabled
+        ? {}
+        : signatureSvg
+          ? {
+              deliverySignatureSvg: signatureSvg,
+              deliverySignerName: trimmedSigner || undefined,
+            }
+          : trimmedSigner && trimmedSigner !== (customerName ?? '').trim()
+            ? { deliverySignerName: trimmedSigner }
+            : {};
+
+      return ordersApi.deliverItem(
         orderId,
         item.id,
         requiresPayment
@@ -83,9 +156,13 @@ function DeliverSplitInner({
                   amount: parseCurrencyBRL(r.amountInput),
                 }))
                 .filter((p) => p.amount > 0),
+              ...signaturePayload,
             }
-          : {}
-      ),
+          : {
+              ...signaturePayload,
+            }
+      );
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['order', orderId] }),
@@ -235,6 +312,86 @@ function DeliverSplitInner({
               )}
             </div>
           </div>
+
+          {pixPayload && (
+            <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-teal-800">
+                  <QrCode className="h-4 w-4" />
+                  {locale === 'en'
+                    ? `Pix QR Code · ${formatBRL(pixAmount, locale)}`
+                    : `QR Code Pix · ${formatBRL(pixAmount, locale)}`}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(pixPayload);
+                      toast.success(
+                        locale === 'en' ? 'Pix code copied!' : 'Código Pix copiado!'
+                      );
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {locale === 'en' ? 'Copy' : 'Copia e Cola'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPixQr((prev) => !prev)}
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                    {showPixQr
+                      ? locale === 'en'
+                        ? 'Hide QR'
+                        : 'Ocultar QR'
+                      : locale === 'en'
+                        ? 'Show QR'
+                        : 'Mostrar QR'}
+                  </Button>
+                </div>
+              </div>
+              {showPixQr && pixQrDataUrl && (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-teal-100 bg-white p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={pixQrDataUrl}
+                    alt="QR Code Pix"
+                    className="h-48 w-48 rounded"
+                  />
+                  <p className="text-[11px] text-slate-500 text-center">
+                    {locale === 'en'
+                      ? 'Customer scans with their bank app. Verify receipt before confirming delivery.'
+                      : 'Mostre para o cliente escanear no app do banco e confira o recebimento antes de confirmar.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Digital Pickup Signature (Optional, controlled by shop settings) */}
+      {deliverySignatureEnabled && (
+        <div className="mt-5 space-y-3 border-t border-slate-200 pt-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+            <PenTool className="h-3.5 w-3.5 text-blue-600" />
+            {locale === 'en' ? 'Pickup Signature (Optional)' : 'Assinatura na Retirada (Opcional)'}
+          </div>
+          <Field label={locale === 'en' ? 'Picked up by' : 'Retirado por'}>
+            <input
+              type="text"
+              maxLength={120}
+              value={signerName}
+              onChange={(e) => setSignerName(e.target.value)}
+              placeholder={
+                locale === 'en' ? 'Name of person picking up' : 'Nome de quem está retirando'
+              }
+              className={inputClassName}
+            />
+          </Field>
+          <SignaturePad locale={locale} onChange={setSignatureSvg} />
         </div>
       )}
     </Modal>
@@ -246,12 +403,14 @@ export function DeliverSplitModal({
   onClose,
   orderId,
   item,
+  customerName,
   onDelivered,
 }: {
   open: boolean;
   onClose: () => void;
   orderId: string;
   item: ServiceOrderItemResponse;
+  customerName?: string | null;
   onDelivered?: () => void;
 }) {
   if (!open) return null;
@@ -261,6 +420,7 @@ export function DeliverSplitModal({
       onClose={onClose}
       orderId={orderId}
       item={item}
+      customerName={customerName}
       onDelivered={onDelivered}
     />
   );

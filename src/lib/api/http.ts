@@ -1,3 +1,4 @@
+import { captureWebApiError } from '@/lib/observability/sentryClient';
 import type { ProblemDetail } from '@/lib/types/api';
 
 export class ApiError extends Error {
@@ -74,7 +75,12 @@ async function performFetch<T>(url: string, options: RequestOptions = {}): Promi
       body: body !== undefined ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     });
-  } catch {
+  } catch (networkError) {
+    captureWebApiError(networkError, {
+      method,
+      path: url.split('?')[0] ?? url,
+      status: 0,
+    });
     throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.');
   }
 
@@ -112,13 +118,20 @@ async function performFetch<T>(url: string, options: RequestOptions = {}): Promi
       unauthorizedHandler();
     }
 
-    throw new ApiError(
+    const apiError = new ApiError(
       response.status,
       message,
       problem,
       requestId,
       Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : problem?.retryAfterSeconds
     );
+    captureWebApiError(apiError, {
+      method,
+      path: url.split('?')[0] ?? url,
+      status: response.status,
+      requestId,
+    });
+    throw apiError;
   }
 
   return parsed as T;

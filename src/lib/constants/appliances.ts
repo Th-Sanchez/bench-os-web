@@ -33,3 +33,18 @@ export function mergeApplianceTypes(customTypes?: string[] | null): string[] {
   }
   return result;
 }
+
+export function resolveChecklistForCategory(
+  templates: Record<string, string[]> | undefined | null,
+  applianceType: string
+): string[] {
+  if (!templates) return [];
+  const normalized = applianceType.trim().toLowerCase();
+  if (!normalized) return [];
+  for (const [key, items] of Object.entries(templates)) {
+    if (key.trim().toLowerCase() === normalized) {
+      return items ?? [];
+    }
+  }
+  return [];
+}

@@ -13,7 +13,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: ${storageOrigins}`,
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https://*.ingest.us.sentry.io https://*.ingest.sentry.io",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
