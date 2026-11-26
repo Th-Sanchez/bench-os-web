@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { authApi } from '@/lib/api/endpoints';
 import { setUnauthorizedHandler } from '@/lib/api/http';
+import { setSentryUserContext } from '@/lib/observability/sentryClient';
 import type { ClientSession, LoginRequest, RegisterTenantRequest } from '@/lib/types/api';
 
 interface AuthContextValue {
@@ -54,6 +55,10 @@ export function AuthProvider({
     setSession(null);
     router.replace('/login');
   }, [queryClient, router]);
+
+  useEffect(() => {
+    setSentryUserContext(session);
+  }, [session]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {

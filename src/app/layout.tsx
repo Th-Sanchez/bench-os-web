@@ -37,6 +37,10 @@ export default async function RootLayout({
 }>) {
   const serverSession = await readServerSession();
   const initialSession = serverSession ? toClientSession(serverSession) : null;
+  const sentryConfig = {
+    dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || null,
+    environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'production',
+  };
 
   return (
     <html
@@ -44,7 +48,9 @@ export default async function RootLayout({
       className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-screen bg-[#F8FAFC] text-[#0F172A] antialiased">
-        <AppProviders initialSession={initialSession}>{children}</AppProviders>
+        <AppProviders initialSession={initialSession} sentryConfig={sentryConfig}>
+          {children}
+        </AppProviders>
       </body>
     </html>
   );
