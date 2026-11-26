@@ -145,6 +145,7 @@ export interface TenantSettingsResponse {
   shopAddress: string | null;
   businessHours: string | null;
   warrantyTerms: string | null;
+  careTipsTemplates: Record<string, string[]>;
 }
 
 export interface UpdateShopBrandingRequest {

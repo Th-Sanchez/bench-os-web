@@ -7,6 +7,7 @@ import {
   Globe,
   ImagePlus,
   KeyRound,
+  Lightbulb,
   PenTool,
   Plus,
   Printer,
@@ -168,6 +169,8 @@ export default function SettingsPage() {
   const [newApplianceType, setNewApplianceType] = useState('');
   const [selectedChecklistCategory, setSelectedChecklistCategory] = useState('Micro-ondas');
   const [newChecklistItem, setNewChecklistItem] = useState('');
+  const [selectedCareCategory, setSelectedCareCategory] = useState('Micro-ondas');
+  const [newCareTip, setNewCareTip] = useState('');
 
   const serverSettings = settingsQuery.data;
   const defaultLaborInput =
@@ -427,6 +430,78 @@ export default function SettingsPage() {
       return;
     }
     mutateCategoryChecklist([...activeChecklistItems, trimmed]);
+  }
+
+  const careTipsTemplates = useMemo(
+    () => serverSettings?.careTipsTemplates ?? {},
+    [serverSettings?.careTipsTemplates]
+  );
+
+  const careTipCategories = useMemo(
+    () =>
+      mergeApplianceTypes([
+        ...(serverSettings?.customApplianceTypes ?? []),
+        ...Object.keys(careTipsTemplates),
+      ]),
+    [serverSettings?.customApplianceTypes, careTipsTemplates]
+  );
+
+  const activeCareTips = useMemo(
+    () => resolveChecklistForCategory(careTipsTemplates, selectedCareCategory),
+    [careTipsTemplates, selectedCareCategory]
+  );
+
+  const updateCareTipsMutation = useMutation({
+    mutationFn: (nextTemplates: Record<string, string[]>) =>
+      tenantSettingsApi.updateCareTips(nextTemplates),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant-settings'], updated);
+      setNewCareTip('');
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  const resetCareTipsMutation = useMutation({
+    mutationFn: () => tenantSettingsApi.resetCareTips(),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant-settings'], updated);
+      toast.success(
+        locale === 'en' ? 'Default care tips restored' : 'Dicas padrão restauradas!'
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  function mutateCategoryCareTips(nextTips: string[]) {
+    const nextMap: Record<string, string[]> = {};
+    const targetLower = selectedCareCategory.trim().toLowerCase();
+    let replaced = false;
+    for (const [key, tips] of Object.entries(careTipsTemplates)) {
+      if (key.trim().toLowerCase() === targetLower) {
+        nextMap[key] = nextTips;
+        replaced = true;
+      } else {
+        nextMap[key] = tips;
+      }
+    }
+    if (!replaced) {
+      nextMap[selectedCareCategory] = nextTips;
+    }
+    updateCareTipsMutation.mutate(nextMap);
+  }
+
+  function handleAddCareTip() {
+    const trimmed = newCareTip.trim();
+    if (!trimmed) return;
+    if (activeCareTips.some((tip) => tip.toLowerCase() === trimmed.toLowerCase())) {
+      setNewCareTip('');
+      return;
+    }
+    mutateCategoryCareTips([...activeCareTips, trimmed]);
   }
 
   const createMemberMutation = useMutation({
@@ -1117,6 +1192,123 @@ export default function SettingsPage() {
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Post-Delivery Appliance Care Tips */}
+      <Card className="p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900">
+              <Lightbulb className="h-4 w-4 text-emerald-600" />
+              {locale === 'en'
+                ? 'Post-Delivery Appliance Care Tips'
+                : 'Dicas de Conservação Pós-Entrega (Manuais Rápidos)'}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {locale === 'en'
+                ? 'Shown automatically on /track and the digital receipt after delivery to help customers make their appliances last longer.'
+                : 'Exibidas automaticamente no /track e no comprovante após a entrega para ensinar o cliente a conservar melhor o aparelho.'}
+            </p>
+          </div>
+          {isOwnerRole && (
+            <Button
+              variant="outline"
+              size="sm"
+              loading={resetCareTipsMutation.isPending}
+              onClick={() => resetCareTipsMutation.mutate()}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {locale === 'en' ? 'Restore defaults' : 'Restaurar padrões'}
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <Field label={locale === 'en' ? 'Appliance category' : 'Categoria do aparelho'}>
+              <select
+                value={selectedCareCategory}
+                onChange={(e) => setSelectedCareCategory(e.target.value)}
+                className={inputClassName}
+              >
+                {careTipCategories.map((cat) => {
+                  const count = resolveChecklistForCategory(careTipsTemplates, cat).length;
+                  return (
+                    <option key={cat} value={cat}>
+                      {count > 0 ? `${cat} (${count})` : cat}
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+          </div>
+
+          <div className="space-y-3 lg:col-span-8">
+            {isOwnerRole && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  maxLength={240}
+                  value={newCareTip}
+                  onChange={(e) => setNewCareTip(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCareTip();
+                    }
+                  }}
+                  placeholder={
+                    locale === 'en'
+                      ? `Add care tip for ${selectedCareCategory}...`
+                      : `Nova dica para ${selectedCareCategory} (ex.: Ligue direto na tomada, sem adaptadores)...`
+                  }
+                  className={inputClassName}
+                />
+                <Button
+                  variant="outline"
+                  size="md"
+                  disabled={!newCareTip.trim()}
+                  loading={updateCareTipsMutation.isPending}
+                  onClick={handleAddCareTip}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {activeCareTips.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                {locale === 'en'
+                  ? `No care tips configured for ${selectedCareCategory}.`
+                  : `Nenhuma dica configurada para ${selectedCareCategory}.`}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {activeCareTips.map((tip) => (
+                  <li
+                    key={tip}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 text-xs text-slate-700"
+                  >
+                    <span className="leading-relaxed">• {tip}</span>
+                    {isOwnerRole && (
+                      <button
+                        type="button"
+                        disabled={updateCareTipsMutation.isPending}
+                        onClick={() =>
+                          mutateCategoryCareTips(activeCareTips.filter((x) => x !== tip))
+                        }
+                        className="shrink-0 text-slate-400 hover:text-red-600"
+                        aria-label={`Remover dica`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </div>
