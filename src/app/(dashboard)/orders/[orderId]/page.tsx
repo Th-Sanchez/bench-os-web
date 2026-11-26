@@ -156,8 +156,20 @@ export default function OrderDetailPage({
   });
 
   const transitionMutation = useMutation({
-    mutationFn: ({ status, cancellationReason }: { status: ItemStatus; cancellationReason?: string }) =>
-      ordersApi.transitionStatus(orderId, activeItem!.id, { status, cancellationReason }),
+    mutationFn: ({
+      status,
+      cancellationReason,
+      quoteOptionId,
+    }: {
+      status: ItemStatus;
+      cancellationReason?: string;
+      quoteOptionId?: string;
+    }) =>
+      ordersApi.transitionStatus(orderId, activeItem!.id, {
+        status,
+        cancellationReason,
+        quoteOptionId,
+      }),
     onSuccess: async (_, variables) => {
       setCancelModalOpen(false);
       setCancelReason('');
@@ -667,9 +679,16 @@ export default function OrderDetailPage({
           <div className="space-y-5 lg:col-span-5">
             <Card className="p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-display text-sm font-bold text-slate-900">
-                  {locale === 'en' ? 'Quote & Margin' : 'Orçamento & Margem'}
-                </h3>
+                <div>
+                  <h3 className="font-display text-sm font-bold text-slate-900">
+                    {locale === 'en' ? 'Quote & Margin' : 'Orçamento & Margem'}
+                  </h3>
+                  {activeItem.selectedQuoteOptionLabel && (
+                    <span className="mt-1 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                      {locale === 'en' ? 'Selected:' : 'Opção:'} {activeItem.selectedQuoteOptionLabel}
+                    </span>
+                  )}
+                </div>
                 {canQuoteNow && (
                   <Button
                     variant="outline"
@@ -681,6 +700,72 @@ export default function OrderDetailPage({
                   </Button>
                 )}
               </div>
+
+              {activeItem.quoteOptions && activeItem.quoteOptions.length > 1 && (
+                <div className="space-y-2 rounded-xl border border-blue-200/80 bg-blue-50/40 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-800">
+                    {locale === 'en'
+                      ? `${activeItem.quoteOptions.length} quote options offered`
+                      : `${activeItem.quoteOptions.length} opções oferecidas ao cliente`}
+                  </p>
+                  <div className="space-y-1.5">
+                    {activeItem.quoteOptions.map((opt) => {
+                      const isChosen = activeItem.selectedQuoteOptionId === opt.id;
+                      return (
+                        <div
+                          key={opt.id}
+                          className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-xs ${
+                            isChosen
+                              ? 'border-emerald-300 bg-emerald-50'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900">
+                              {opt.label}
+                              {opt.recommended && (
+                                <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                  {locale === 'en' ? 'Rec.' : 'Rec.'}
+                                </span>
+                              )}
+                              {isChosen && (
+                                <span className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  {locale === 'en' ? 'Chosen' : 'Escolhida'}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {opt.warrantyDays}d {locale === 'en' ? 'warranty' : 'garantia'}
+                              {opt.description ? ` · ${opt.description}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900">
+                              {formatBRL(opt.totalPrice, locale)}
+                            </span>
+                            {activeItem.status === 'QUOTE_SENT' &&
+                              canTransitionToStatus(role, 'APPROVED') && (
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  loading={transitionMutation.isPending}
+                                  onClick={() =>
+                                    transitionMutation.mutate({
+                                      status: 'APPROVED',
+                                      quoteOptionId: opt.id,
+                                    })
+                                  }
+                                >
+                                  {locale === 'en' ? 'Approve' : 'Aprovar'}
+                                </Button>
+                              )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-slate-600">

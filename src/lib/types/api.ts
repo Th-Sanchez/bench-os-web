@@ -264,6 +264,9 @@ export interface ServiceOrderItemResponse {
   assignedTechnicianName?: string | null;
   commissionPercent?: number | null;
   commissionAmount?: number | null;
+  selectedQuoteOptionId?: string | null;
+  selectedQuoteOptionLabel?: string | null;
+  quoteOptions?: QuoteOptionResponse[];
   createdAt: string;
   updatedAt: string;
 }
@@ -363,6 +366,32 @@ export interface CreateWarrantyReturnRequest {
   notes?: string;
 }
 
+export interface QuoteOptionRequest {
+  label: string;
+  description?: string;
+  laborCost: number;
+  partsCost: number;
+  partsCostActual?: number;
+  discount?: number;
+  warrantyDays?: number;
+  recommended?: boolean;
+}
+
+export interface QuoteOptionResponse {
+  id: string;
+  optionIndex: number;
+  label: string;
+  description: string | null;
+  laborCost: number;
+  partsCost: number;
+  partsCostActual: number;
+  discount: number;
+  totalPrice: number;
+  estimatedNetProfit: number;
+  warrantyDays: number;
+  recommended: boolean;
+}
+
 export interface UpdateItemQuoteRequest {
   technicalDiagnosis?: string;
   laborCost: number;
@@ -370,6 +399,7 @@ export interface UpdateItemQuoteRequest {
   partsCostActual?: number;
   discount: number;
   warrantyDays?: number;
+  quoteOptions?: QuoteOptionRequest[];
 }
 
 export interface PartCatalogResponse {
@@ -510,6 +540,7 @@ export interface WorkshopAnalyticsResponse {
 export interface TransitionItemStatusRequest {
   status: ItemStatus;
   cancellationReason?: string;
+  quoteOptionId?: string;
 }
 
 export interface PaymentPartRequest {
