@@ -1,5 +1,7 @@
 export type Role = 'OWNER' | 'ATTENDANT' | 'TECHNICIAN';
 
+export type CommissionBasis = 'LABOR_ONLY' | 'TOTAL_PRICE' | 'NET_PROFIT';
+
 export type Voltage = 'V110' | 'V220' | 'BIVOLT' | 'BATTERY' | 'UNKNOWN';
 
 export type ItemStatus =
@@ -67,7 +69,14 @@ export interface UserResponse {
   email: string;
   role: Role;
   active: boolean;
+  commissionPercent?: number;
   createdAt: string;
+}
+
+export interface TechnicianOptionResponse {
+  id: string;
+  name: string;
+  role: Role;
 }
 
 export interface TenantResponse {
@@ -126,6 +135,7 @@ export interface CreateUserRequest {
   email: string;
   password: string;
   role: Role;
+  commissionPercent?: number;
 }
 
 export interface TenantSettingsResponse {
@@ -148,6 +158,8 @@ export interface TenantSettingsResponse {
   businessHours: string | null;
   warrantyTerms: string | null;
   careTipsTemplates: Record<string, string[]>;
+  technicianAssignmentEnabled: boolean;
+  commissionBasis: CommissionBasis;
 }
 
 export interface UpdateShopBrandingRequest {
@@ -170,6 +182,8 @@ export interface UpdateTenantSettingsRequest {
   pixKey?: string;
   pixReceiverName?: string;
   pixReceiverCity?: string;
+  technicianAssignmentEnabled?: boolean;
+  commissionBasis?: CommissionBasis;
 }
 
 // Customer
@@ -246,6 +260,10 @@ export interface ServiceOrderItemResponse {
   parentOrderId: string | null;
   parentItemTag: string | null;
   warrantyReturn: boolean;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string | null;
+  commissionPercent?: number | null;
+  commissionAmount?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -288,8 +306,55 @@ export interface OrderItemQueueResponse {
   finishedAt: string | null;
   parentItemId: string | null;
   warrantyReturn: boolean;
+  assignedTechnicianId?: string | null;
+  assignedTechnicianName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AssignTechnicianRequest {
+  technicianId: string | null;
+  commissionPercent?: number | null;
+  clearCommissionOverride?: boolean;
+}
+
+export interface CommissionItemDetail {
+  serviceOrderId: string;
+  itemId: string;
+  itemTag: string;
+  applianceDisplayName: string;
+  deliveredAt: string | null;
+  laborCost: number;
+  totalPrice: number;
+  netProfit: number;
+  commissionPercent: number;
+  commissionAmount: number;
+}
+
+export interface TechnicianCommissionRow {
+  technicianId: string;
+  technicianName: string;
+  role: Role | null;
+  defaultCommissionPercent: number;
+  deliveredItemsCount: number;
+  totalLabor: number;
+  totalRevenue: number;
+  totalNetProfit: number;
+  commissionTotal: number;
+  items: CommissionItemDetail[];
+}
+
+export interface MonthlyCommissionReportResponse {
+  periodStart: string;
+  periodEnd: string;
+  zone: string;
+  technicianAssignmentEnabled: boolean;
+  commissionBasis: CommissionBasis;
+  deliveredWithTechnicianCount: number;
+  deliveredUnassignedCount: number;
+  totalCommissionableRevenue: number;
+  totalCommissionAmount: number;
+  technicians: TechnicianCommissionRow[];
 }
 
 export interface CreateWarrantyReturnRequest {

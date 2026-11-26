@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Download,
   Plus,
   Printer,
@@ -18,6 +19,7 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react';
+import { CommissionsPanel } from '@/components/finance/CommissionsPanel';
 import { DailyCashClosingModal } from '@/components/finance/DailyCashClosingModal';
 import { FinanceCharts, type MonthlyTrendPoint } from '@/components/finance/FinanceCharts';
 import {
@@ -57,7 +59,7 @@ export default function FinancePage() {
   const [txTypeFilter, setTxTypeFilter] = useState<TransactionType | 'ALL'>('ALL');
   const [txStatusFilter, setTxStatusFilter] = useState<TransactionStatus | 'ALL'>('ALL');
   const [page, setPage] = useState(0);
-  const [activeTab, setActiveTab] = useState<'cashflow' | 'indicators'>('cashflow');
+  const [activeTab, setActiveTab] = useState<'cashflow' | 'indicators' | 'commissions'>('cashflow');
 
   const [txModalOpen, setTxModalOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<FinancialTransactionResponse | null>(null);
@@ -112,6 +114,16 @@ export default function FinancePage() {
     queryFn: () => ordersApi.getAnalytics({ from, to, zone: 'America/Sao_Paulo' }),
     enabled: allowed,
   });
+
+  const commissionsQuery = useQuery({
+    queryKey: ['finance', 'commissions', from, to],
+    queryFn: () => ordersApi.getMonthlyCommissions({ from, to, zone: 'America/Sao_Paulo' }),
+    enabled: allowed,
+  });
+
+  const showCommissionsTab =
+    Boolean(commissionsQuery.data?.technicianAssignmentEnabled) ||
+    (commissionsQuery.data?.deliveredWithTechnicianCount ?? 0) > 0;
 
   const transactionsQuery = useQuery({
     queryKey: ['finance', 'transactions', from, to, txTypeFilter, txStatusFilter, page],
@@ -279,12 +291,32 @@ export default function FinancePage() {
               </span>
             )}
           </button>
+          {showCommissionsTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('commissions')}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                activeTab === 'commissions'
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Coins className="h-4 w-4" />
+              {locale === 'en' ? 'Commissions' : 'Comissões'}
+            </button>
+          )}
         </div>
 
         {activeTab === 'indicators' ? (
           <WorkshopAnalyticsPanel
             analytics={analyticsQuery.data}
             loading={analyticsQuery.isLoading}
+          />
+        ) : activeTab === 'commissions' ? (
+          <CommissionsPanel
+            report={commissionsQuery.data}
+            loading={commissionsQuery.isLoading}
+            monthLabel={monthLabel}
           />
         ) : (
         <>

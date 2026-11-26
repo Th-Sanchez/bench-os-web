@@ -19,6 +19,7 @@ import {
   Star,
   Tag,
   User,
+  Wrench,
   X,
 } from 'lucide-react';
 import { DeliverSplitModal } from '@/components/orders/DeliverSplitModal';
@@ -40,7 +41,7 @@ import {
   inputClassName,
 } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
-import { financeApi, ordersApi, photosApi, tenantSettingsApi } from '@/lib/api/endpoints';
+import { financeApi, ordersApi, photosApi, tenantSettingsApi, usersApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useI18n } from '@/lib/i18n/I18nProvider';
@@ -112,6 +113,46 @@ export default function OrderDetailPage({
     queryKey: ['item-payments', activeItem?.id],
     queryFn: () => financeApi.listItemPayments(activeItem!.id),
     enabled: Boolean(activeItem && activeItem.status === 'DELIVERED'),
+  });
+
+  const showTechnicianBlock =
+    Boolean(settingsQuery.data?.technicianAssignmentEnabled) ||
+    Boolean(activeItem?.assignedTechnicianId);
+
+  const techniciansQuery = useQuery({
+    queryKey: ['assignable-technicians'],
+    queryFn: () => usersApi.listTechnicians(),
+    enabled: showTechnicianBlock,
+  });
+
+  const assignTechMutation = useMutation({
+    mutationFn: ({
+      technicianId,
+      commissionPercent,
+      clearCommissionOverride,
+    }: {
+      technicianId: string | null;
+      commissionPercent?: number | null;
+      clearCommissionOverride?: boolean;
+    }) =>
+      ordersApi.assignTechnician(orderId, activeItem!.id, {
+        technicianId,
+        commissionPercent,
+        clearCommissionOverride,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['order', orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['bench-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['finance', 'commissions'] }),
+      ]);
+      toast.success(
+        locale === 'en' ? 'Responsible technician updated' : 'Técnico responsável atualizado!'
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
   });
 
   const transitionMutation = useMutation({
@@ -347,6 +388,103 @@ export default function OrderDetailPage({
                   </p>
                 </div>
               </div>
+
+              {showTechnicianBlock && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-blue-600" />
+                    <span className="font-semibold text-slate-700">
+                      {locale === 'en' ? 'Responsible Technician' : 'Técnico Responsável'}
+                    </span>
+                  </div>
+
+                  {activeItem.status === 'DELIVERED' ||
+                  activeItem.status === 'DISCARDED' ||
+                  activeItem.status === 'CANCELLED' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-900">
+                        {activeItem.assignedTechnicianName ||
+                          (locale === 'en' ? 'Unassigned' : 'Não atribuído')}
+                      </span>
+                      {role === 'OWNER' && activeItem.commissionAmount != null && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-800">
+                          {locale === 'en' ? 'Commission' : 'Comissão'}:{' '}
+                          {formatBRL(activeItem.commissionAmount, locale)}
+                          {activeItem.commissionPercent != null
+                            ? ` (${activeItem.commissionPercent.toFixed(1)}%)`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={activeItem.assignedTechnicianId ?? ''}
+                        disabled={assignTechMutation.isPending}
+                        onChange={(e) =>
+                          assignTechMutation.mutate({
+                            technicianId: e.target.value || null,
+                          })
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800"
+                      >
+                        <option value="">
+                          {locale === 'en' ? '— Unassigned —' : '— Sem técnico —'}
+                        </option>
+                        {(techniciansQuery.data ?? []).map((tech) => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {role === 'OWNER' && activeItem.assignedTechnicianId && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-500">%</span>
+                          <input
+                            key={`${activeItem.id}-${activeItem.commissionPercent ?? 'default'}`}
+                            type="number"
+                            min={0}
+                            max={100}
+                            step="0.5"
+                            defaultValue={
+                              activeItem.commissionPercent != null
+                                ? String(activeItem.commissionPercent)
+                                : ''
+                            }
+                            placeholder={locale === 'en' ? 'Default' : 'Padrão'}
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              if (!raw) {
+                                if (activeItem.commissionPercent != null) {
+                                  assignTechMutation.mutate({
+                                    technicianId: activeItem.assignedTechnicianId ?? null,
+                                    clearCommissionOverride: true,
+                                  });
+                                }
+                                return;
+                              }
+                              const num = Number.parseFloat(raw.replace(',', '.'));
+                              if (
+                                Number.isFinite(num) &&
+                                num >= 0 &&
+                                num <= 100 &&
+                                num !== activeItem.commissionPercent
+                              ) {
+                                assignTechMutation.mutate({
+                                  technicianId: activeItem.assignedTechnicianId ?? null,
+                                  commissionPercent: num,
+                                });
+                              }
+                            }}
+                            className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-800"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-3">
                 <div>

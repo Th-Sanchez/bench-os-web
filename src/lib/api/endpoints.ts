@@ -1,6 +1,7 @@
 import { apiRequest, bffAuthRequest } from './http';
 import type {
   ArrivePartRequestRequest,
+  AssignTechnicianRequest,
   ClientSession,
   CreateFinancialTransactionRequest,
   CreatePartRequestRequest,
@@ -19,6 +20,7 @@ import type {
   LoginRequest,
   MarkPartOrderedRequest,
   MessageResponse,
+  MonthlyCommissionReportResponse,
   OrderItemQueueResponse,
   PageResponse,
   PartCatalogResponse,
@@ -31,6 +33,7 @@ import type {
   ServiceOrderItemResponse,
   ServiceOrderResponse,
   SupplierResponse,
+  TechnicianOptionResponse,
   TenantSettingsResponse,
   TransactionCategory,
   TransactionPaymentMethod,
@@ -76,6 +79,7 @@ export const authApi = {
 export const usersApi = {
   me: () => apiRequest<UserResponse>('/api/v1/users/me'),
   list: () => apiRequest<UserResponse[]>('/api/v1/users'),
+  listTechnicians: () => apiRequest<TechnicianOptionResponse[]>('/api/v1/users/technicians'),
   create: (payload: CreateUserRequest) =>
     apiRequest<UserResponse>('/api/v1/users', { method: 'POST', body: payload }),
   updateStatus: (id: string, active: boolean) =>
@@ -84,6 +88,11 @@ export const usersApi = {
     apiRequest<UserResponse>(`/api/v1/users/${id}/password`, {
       method: 'PATCH',
       body: { newPassword },
+    }),
+  updateCommission: (id: string, commissionPercent: number) =>
+    apiRequest<UserResponse>(`/api/v1/users/${id}/commission`, {
+      method: 'PATCH',
+      body: { commissionPercent },
     }),
 };
 
@@ -161,6 +170,9 @@ export const ordersApi = {
   getAnalytics: (params?: { from?: string; to?: string; zone?: string }) =>
     apiRequest<WorkshopAnalyticsResponse>('/api/v1/orders/analytics', { query: params }),
 
+  getMonthlyCommissions: (params?: { from?: string; to?: string; zone?: string }) =>
+    apiRequest<MonthlyCommissionReportResponse>('/api/v1/orders/commissions', { query: params }),
+
   listBenchQueue: (params?: {
     status?: ItemStatus[];
     tag?: string;
@@ -175,6 +187,12 @@ export const ordersApi = {
 
   updateQuote: (orderId: string, itemId: string, payload: UpdateItemQuoteRequest) =>
     apiRequest<ServiceOrderItemResponse>(`/api/v1/orders/${orderId}/items/${itemId}/quote`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+
+  assignTechnician: (orderId: string, itemId: string, payload: AssignTechnicianRequest) =>
+    apiRequest<ServiceOrderItemResponse>(`/api/v1/orders/${orderId}/items/${itemId}/technician`, {
       method: 'PATCH',
       body: payload,
     }),
