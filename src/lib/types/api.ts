@@ -138,6 +138,9 @@ export interface TenantSettingsResponse {
   googleReviewUrl: string | null;
   deliverySignatureEnabled: boolean;
   intakeChecklistTemplates: Record<string, string[]>;
+  pixKey: string | null;
+  pixReceiverName: string | null;
+  pixReceiverCity: string | null;
 }
 
 export interface UpdateTenantSettingsRequest {
@@ -149,6 +152,9 @@ export interface UpdateTenantSettingsRequest {
   whatsappReadyTemplate?: string;
   googleReviewUrl?: string;
   deliverySignatureEnabled?: boolean;
+  pixKey?: string;
+  pixReceiverName?: string;
+  pixReceiverCity?: string;
 }
 
 // Customer
