@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { Wrench, Globe } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -35,8 +36,21 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="w-full max-w-md">{children}</div>
       </main>
 
-      <footer className="px-6 py-4 text-center text-xs text-slate-500">
-        {t.auth.footerNote}
+      <footer className="px-6 py-4 text-center text-xs text-slate-500 space-y-1.5">
+        <p>{t.auth.footerNote}</p>
+        <div className="flex items-center justify-center gap-3 text-[11px]">
+          <Link href="/como-usar" className="hover:text-slate-800 hover:underline">
+            {locale === 'en' ? 'How to use' : 'Como usar'}
+          </Link>
+          <span>·</span>
+          <Link href="/privacidade" className="hover:text-slate-800 hover:underline">
+            {locale === 'en' ? 'Privacy' : 'Privacidade'}
+          </Link>
+          <span>·</span>
+          <Link href="/termos" className="hover:text-slate-800 hover:underline">
+            {locale === 'en' ? 'Terms' : 'Termos'}
+          </Link>
+        </div>
       </footer>
     </div>
   );
