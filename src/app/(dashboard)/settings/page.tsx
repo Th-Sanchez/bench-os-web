@@ -9,6 +9,7 @@ import {
   KeyRound,
   Lightbulb,
   PenTool,
+  Percent,
   Plus,
   Printer,
   QrCode,
@@ -19,6 +20,7 @@ import {
   Trash2,
   UserCheck,
   UserPlus,
+  Users,
   UserX,
   X,
 } from 'lucide-react';
@@ -43,7 +45,7 @@ import {
   usePrintPreferences,
   type LabelPrintFormat,
 } from '@/lib/settings/PrintPreferencesContext';
-import type { Role, UserResponse, WhatsappMessageStage } from '@/lib/types/api';
+import type { CommissionBasis, Role, UserResponse, WhatsappMessageStage } from '@/lib/types/api';
 import {
   formatCurrencyInput,
   maskCurrencyBRL,
@@ -158,6 +160,8 @@ export default function SettingsPage() {
   const [waReadyDraft, setWaReadyDraft] = useState<string | null>(null);
   const [googleReviewUrlDraft, setGoogleReviewUrlDraft] = useState<string | null>(null);
   const [deliverySignatureDraft, setDeliverySignatureDraft] = useState<boolean | null>(null);
+  const [technicianAssignmentDraft, setTechnicianAssignmentDraft] = useState<boolean | null>(null);
+  const [commissionBasisDraft, setCommissionBasisDraft] = useState<CommissionBasis | null>(null);
   const [pixKeyDraft, setPixKeyDraft] = useState<string | null>(null);
   const [pixReceiverNameDraft, setPixReceiverNameDraft] = useState<string | null>(null);
   const [pixReceiverCityDraft, setPixReceiverCityDraft] = useState<string | null>(null);
@@ -194,6 +198,10 @@ export default function SettingsPage() {
   const googleReviewUrl = googleReviewUrlDraft ?? (serverSettings?.googleReviewUrl ?? '');
   const deliverySignatureEnabled =
     deliverySignatureDraft ?? Boolean(serverSettings?.deliverySignatureEnabled);
+  const technicianAssignmentEnabled =
+    technicianAssignmentDraft ?? Boolean(serverSettings?.technicianAssignmentEnabled);
+  const commissionBasis: CommissionBasis =
+    commissionBasisDraft ?? (serverSettings?.commissionBasis ?? 'LABOR_ONLY');
   const pixKey = pixKeyDraft ?? (serverSettings?.pixKey ?? '');
   const pixReceiverName = pixReceiverNameDraft ?? (serverSettings?.pixReceiverName ?? '');
   const pixReceiverCity = pixReceiverCityDraft ?? (serverSettings?.pixReceiverCity ?? '');
@@ -253,9 +261,12 @@ export default function SettingsPage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
   const [memberRole, setMemberRole] = useState<Role>('TECHNICIAN');
+  const [memberCommission, setMemberCommission] = useState('0');
 
   const [resetTarget, setResetTarget] = useState<UserResponse | null>(null);
   const [resetNewPassword, setResetNewPassword] = useState('');
+  const [commissionTarget, setCommissionTarget] = useState<UserResponse | null>(null);
+  const [commissionDraft, setCommissionDraft] = useState('0');
 
   const saveSettingsMutation = useMutation({
     mutationFn: () =>
@@ -271,6 +282,8 @@ export default function SettingsPage() {
         pixKey: pixKey.trim(),
         pixReceiverName: pixReceiverName.trim(),
         pixReceiverCity: pixReceiverCity.trim(),
+        technicianAssignmentEnabled,
+        commissionBasis,
       }),
     onSuccess: async () => {
       setDefaultLaborDraft(null);
@@ -281,10 +294,15 @@ export default function SettingsPage() {
       setWaReadyDraft(null);
       setGoogleReviewUrlDraft(null);
       setDeliverySignatureDraft(null);
+      setTechnicianAssignmentDraft(null);
+      setCommissionBasisDraft(null);
       setPixKeyDraft(null);
       setPixReceiverNameDraft(null);
       setPixReceiverCityDraft(null);
-      await queryClient.invalidateQueries({ queryKey: ['tenant-settings'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tenant-settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['finance', 'commissions'] }),
+      ]);
       toast.success(locale === 'en' ? 'Settings saved' : 'Configurações salvas!');
     },
     onError: (err) => {
@@ -505,21 +523,44 @@ export default function SettingsPage() {
   }
 
   const createMemberMutation = useMutation({
-    mutationFn: () =>
-      usersApi.create({
+    mutationFn: () => {
+      const parsedComm = Number.parseFloat(memberCommission.replace(',', '.'));
+      const safeComm = Number.isFinite(parsedComm)
+        ? Math.min(100, Math.max(0, parsedComm))
+        : 0;
+      return usersApi.create({
         name: memberName.trim(),
         email: memberEmail.trim().toLowerCase(),
         password: memberPassword,
         role: memberRole,
-      }),
+        commissionPercent: safeComm,
+      });
+    },
     onSuccess: async () => {
       setCreateMemberOpen(false);
       setMemberName('');
       setMemberEmail('');
       setMemberPassword('');
       setMemberRole('TECHNICIAN');
+      setMemberCommission('0');
       await queryClient.invalidateQueries({ queryKey: ['team-users'] });
       toast.success(locale === 'en' ? 'Team member added' : 'Membro da equipe cadastrado!');
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
+  const updateCommissionMutation = useMutation({
+    mutationFn: () => {
+      const parsed = Number.parseFloat(commissionDraft.replace(',', '.'));
+      const safe = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+      return usersApi.updateCommission(commissionTarget!.id, safe);
+    },
+    onSuccess: async () => {
+      setCommissionTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['team-users'] });
+      toast.success(locale === 'en' ? 'Commission updated' : 'Comissão atualizada!');
     },
     onError: (err) => {
       toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
@@ -816,6 +857,76 @@ export default function SettingsPage() {
                     }`}
                   />
                 </button>
+              </div>
+
+              {/* Optional Technician Assignment & Commissions Toggle */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <Users className="h-4 w-4 text-blue-600" />
+                      {locale === 'en'
+                        ? 'Assigned Technician & Commissions (Optional)'
+                        : 'Técnico Responsável & Comissões (Opcional)'}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {locale === 'en'
+                        ? 'Enable for multi-technician workshops to assign items and track monthly commissions in Finance. Keep off for solo shops.'
+                        : 'Ative em oficinas com equipe para atribuir um técnico por aparelho e fechar comissões mensais no Financeiro. Mantenha desativado se trabalha sozinho.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={technicianAssignmentEnabled}
+                    onClick={() => setTechnicianAssignmentDraft(!technicianAssignmentEnabled)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      technicianAssignmentEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                        technicianAssignmentEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {technicianAssignmentEnabled && (
+                  <div className="border-t border-slate-200/80 pt-3">
+                    <Field
+                      label={locale === 'en' ? 'Commission calculation basis' : 'Base de cálculo da comissão'}
+                      hint={
+                        locale === 'en'
+                          ? 'Default % is configured per operator in Team Members below.'
+                          : 'O percentual padrão de cada técnico é configurado na tabela Equipe da Oficina abaixo.'
+                      }
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {(
+                          [
+                            { id: 'LABOR_ONLY', pt: 'Sobre Mão de Obra', en: 'Labor only' },
+                            { id: 'TOTAL_PRICE', pt: 'Sobre Valor Total', en: 'Total price' },
+                            { id: 'NET_PROFIT', pt: 'Sobre Lucro Líquido', en: 'Net profit' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setCommissionBasisDraft(opt.id)}
+                            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                              commissionBasis === opt.id
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {locale === 'en' ? opt.en : opt.pt}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -1340,6 +1451,11 @@ export default function SettingsPage() {
                     <th className="px-4 py-3">{locale === 'en' ? 'Name' : 'Nome'}</th>
                     <th className="px-4 py-3">E-mail</th>
                     <th className="px-4 py-3">{locale === 'en' ? 'Role' : 'Perfil'}</th>
+                    {technicianAssignmentEnabled && (
+                      <th className="px-4 py-3 text-right">
+                        {locale === 'en' ? 'Commission' : 'Comissão'}
+                      </th>
+                    )}
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">{t.common.actions}</th>
                   </tr>
@@ -1365,6 +1481,25 @@ export default function SettingsPage() {
                             {t.role[member.role]}
                           </span>
                         </td>
+                        {technicianAssignmentEnabled && (
+                          <td className="px-4 py-3 text-right">
+                            {member.role === 'ATTENDANT' ? (
+                              <span className="text-xs text-slate-400">—</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCommissionTarget(member);
+                                  setCommissionDraft(String(member.commissionPercent ?? 0));
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs font-semibold text-slate-800 hover:border-blue-400 hover:text-blue-700"
+                              >
+                                {(member.commissionPercent ?? 0).toFixed(1)}%
+                                <Percent className="h-3 w-3 opacity-60" />
+                              </button>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
@@ -1491,7 +1626,62 @@ export default function SettingsPage() {
               />
             </Field>
           </div>
+          {technicianAssignmentEnabled && memberRole !== 'ATTENDANT' && (
+            <Field label={locale === 'en' ? 'Default commission (%)' : 'Comissão padrão (%)'}>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.5"
+                value={memberCommission}
+                onChange={(e) => setMemberCommission(e.target.value)}
+                className={`${inputClassName} font-mono`}
+              />
+            </Field>
+          )}
         </div>
+      </Modal>
+
+      {/* Edit Operator Commission Modal */}
+      <Modal
+        open={Boolean(commissionTarget)}
+        onClose={() => setCommissionTarget(null)}
+        size="sm"
+        title={locale === 'en' ? 'Technician Commission (%)' : 'Comissão do Técnico (%)'}
+        subtitle={commissionTarget ? `${commissionTarget.name} (${t.role[commissionTarget.role]})` : undefined}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCommissionTarget(null)}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              variant="primary"
+              loading={updateCommissionMutation.isPending}
+              onClick={() => updateCommissionMutation.mutate()}
+            >
+              {t.common.save}
+            </Button>
+          </>
+        }
+      >
+        <Field
+          label={locale === 'en' ? 'Commission percentage (0–100%)' : 'Percentual de comissão (0–100%)'}
+          hint={
+            locale === 'en'
+              ? 'Applies to future delivered repairs. Already delivered items keep their original rate.'
+              : 'Vale para as próximas entregas. Itens já entregues mantêm o percentual da época.'
+          }
+        >
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.5"
+            value={commissionDraft}
+            onChange={(e) => setCommissionDraft(e.target.value)}
+            className={`${inputClassName} font-mono`}
+          />
+        </Field>
       </Modal>
 
       {/* Reset Member Password Modal */}

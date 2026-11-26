@@ -35,6 +35,7 @@ import { maskPhoneBR } from '@/lib/utils/masks';
 interface DraftItem {
   id: string;
   applianceType: string;
+  customApplianceMode: boolean;
   brand: string;
   model: string;
   voltage: Voltage;
@@ -45,11 +46,13 @@ interface DraftItem {
 }
 
 const VOLTAGES: Voltage[] = ['V110', 'V220', 'BIVOLT', 'BATTERY', 'UNKNOWN'];
+const CUSTOM_APPLIANCE_OPTION = '__CUSTOM__';
 
 function createEmptyItem(): DraftItem {
   return {
     id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    applianceType: 'Micro-ondas',
+    applianceType: '',
+    customApplianceMode: false,
     brand: '',
     model: '',
     voltage: 'V110',
@@ -349,16 +352,72 @@ function NewOrderFormInner() {
 
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                 <Field label={locale === 'en' ? 'Appliance type' : 'Tipo de aparelho'} required>
-                  <input
-                    list="appliance-types-list"
-                    required
-                    value={item.applianceType}
-                    onChange={(e) =>
-                      updateItem(item.id, { applianceType: e.target.value, checkedLabels: [] })
-                    }
-                    placeholder="Micro-ondas"
-                    className={inputClassName}
-                  />
+                  {item.customApplianceMode ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        value={item.applianceType}
+                        onChange={(e) =>
+                          updateItem(item.id, {
+                            applianceType: e.target.value,
+                            checkedLabels: [],
+                          })
+                        }
+                        placeholder={
+                          locale === 'en'
+                            ? 'e.g. Juicer, Heater...'
+                            : 'Ex.: Purificador, Aquecedor...'
+                        }
+                        className={inputClassName}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateItem(item.id, {
+                            customApplianceMode: false,
+                            applianceType: '',
+                            checkedLabels: [],
+                          })
+                        }
+                        title={locale === 'en' ? 'Back to list' : 'Voltar para a lista'}
+                        className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        {locale === 'en' ? 'List' : 'Lista'}
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      required
+                      value={item.applianceType}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === CUSTOM_APPLIANCE_OPTION) {
+                          updateItem(item.id, {
+                            customApplianceMode: true,
+                            applianceType: '',
+                            checkedLabels: [],
+                          });
+                          return;
+                        }
+                        updateItem(item.id, { applianceType: value, checkedLabels: [] });
+                      }}
+                      className={`${inputClassName} ${!item.applianceType ? 'text-slate-400' : ''}`}
+                    >
+                      <option value="">
+                        {locale === 'en' ? 'Select appliance...' : 'Selecione o aparelho...'}
+                      </option>
+                      {applianceTypes.map((type) => (
+                        <option key={type} value={type} className="text-slate-900">
+                          {type}
+                        </option>
+                      ))}
+                      <option value={CUSTOM_APPLIANCE_OPTION} className="text-slate-900">
+                        {locale === 'en' ? 'Other (type manually)...' : 'Outro (digitar)...'}
+                      </option>
+                    </select>
+                  )}
                 </Field>
                 <Field label={locale === 'en' ? 'Brand' : 'Marca'} required>
                   <input
@@ -502,12 +561,6 @@ function NewOrderFormInner() {
               </Field>
             </Card>
           ))}
-
-          <datalist id="appliance-types-list">
-            {applianceTypes.map((type) => (
-              <option key={type} value={type} />
-            ))}
-          </datalist>
         </div>
       </form>
 

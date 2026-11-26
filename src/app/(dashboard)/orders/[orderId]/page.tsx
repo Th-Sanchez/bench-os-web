@@ -19,9 +19,11 @@ import {
   Star,
   Tag,
   User,
+  Wrench,
   X,
 } from 'lucide-react';
 import { DeliverSplitModal } from '@/components/orders/DeliverSplitModal';
+import { ItemPartRequestsCard } from '@/components/orders/ItemPartRequestsCard';
 import { QuoteEditModal } from '@/components/orders/QuoteEditModal';
 import { toSignatureDataUri } from '@/components/orders/SignaturePad';
 import { WarrantyReturnModal } from '@/components/orders/WarrantyReturnModal';
@@ -39,7 +41,7 @@ import {
   inputClassName,
 } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
-import { financeApi, ordersApi, photosApi, tenantSettingsApi } from '@/lib/api/endpoints';
+import { financeApi, ordersApi, photosApi, tenantSettingsApi, usersApi } from '@/lib/api/endpoints';
 import { ApiError } from '@/lib/api/http';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useI18n } from '@/lib/i18n/I18nProvider';
@@ -113,9 +115,61 @@ export default function OrderDetailPage({
     enabled: Boolean(activeItem && activeItem.status === 'DELIVERED'),
   });
 
+  const showTechnicianBlock =
+    Boolean(settingsQuery.data?.technicianAssignmentEnabled) ||
+    Boolean(activeItem?.assignedTechnicianId);
+
+  const techniciansQuery = useQuery({
+    queryKey: ['assignable-technicians'],
+    queryFn: () => usersApi.listTechnicians(),
+    enabled: showTechnicianBlock,
+  });
+
+  const assignTechMutation = useMutation({
+    mutationFn: ({
+      technicianId,
+      commissionPercent,
+      clearCommissionOverride,
+    }: {
+      technicianId: string | null;
+      commissionPercent?: number | null;
+      clearCommissionOverride?: boolean;
+    }) =>
+      ordersApi.assignTechnician(orderId, activeItem!.id, {
+        technicianId,
+        commissionPercent,
+        clearCommissionOverride,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['order', orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['bench-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['finance', 'commissions'] }),
+      ]);
+      toast.success(
+        locale === 'en' ? 'Responsible technician updated' : 'Técnico responsável atualizado!'
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : t.common.errorGeneric);
+    },
+  });
+
   const transitionMutation = useMutation({
-    mutationFn: ({ status, cancellationReason }: { status: ItemStatus; cancellationReason?: string }) =>
-      ordersApi.transitionStatus(orderId, activeItem!.id, { status, cancellationReason }),
+    mutationFn: ({
+      status,
+      cancellationReason,
+      quoteOptionId,
+    }: {
+      status: ItemStatus;
+      cancellationReason?: string;
+      quoteOptionId?: string;
+    }) =>
+      ordersApi.transitionStatus(orderId, activeItem!.id, {
+        status,
+        cancellationReason,
+        quoteOptionId,
+      }),
     onSuccess: async (_, variables) => {
       setCancelModalOpen(false);
       setCancelReason('');
@@ -347,6 +401,103 @@ export default function OrderDetailPage({
                 </div>
               </div>
 
+              {showTechnicianBlock && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-blue-600" />
+                    <span className="font-semibold text-slate-700">
+                      {locale === 'en' ? 'Responsible Technician' : 'Técnico Responsável'}
+                    </span>
+                  </div>
+
+                  {activeItem.status === 'DELIVERED' ||
+                  activeItem.status === 'DISCARDED' ||
+                  activeItem.status === 'CANCELLED' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-900">
+                        {activeItem.assignedTechnicianName ||
+                          (locale === 'en' ? 'Unassigned' : 'Não atribuído')}
+                      </span>
+                      {role === 'OWNER' && activeItem.commissionAmount != null && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-800">
+                          {locale === 'en' ? 'Commission' : 'Comissão'}:{' '}
+                          {formatBRL(activeItem.commissionAmount, locale)}
+                          {activeItem.commissionPercent != null
+                            ? ` (${activeItem.commissionPercent.toFixed(1)}%)`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={activeItem.assignedTechnicianId ?? ''}
+                        disabled={assignTechMutation.isPending}
+                        onChange={(e) =>
+                          assignTechMutation.mutate({
+                            technicianId: e.target.value || null,
+                          })
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800"
+                      >
+                        <option value="">
+                          {locale === 'en' ? '— Unassigned —' : '— Sem técnico —'}
+                        </option>
+                        {(techniciansQuery.data ?? []).map((tech) => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {role === 'OWNER' && activeItem.assignedTechnicianId && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-500">%</span>
+                          <input
+                            key={`${activeItem.id}-${activeItem.commissionPercent ?? 'default'}`}
+                            type="number"
+                            min={0}
+                            max={100}
+                            step="0.5"
+                            defaultValue={
+                              activeItem.commissionPercent != null
+                                ? String(activeItem.commissionPercent)
+                                : ''
+                            }
+                            placeholder={locale === 'en' ? 'Default' : 'Padrão'}
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              if (!raw) {
+                                if (activeItem.commissionPercent != null) {
+                                  assignTechMutation.mutate({
+                                    technicianId: activeItem.assignedTechnicianId ?? null,
+                                    clearCommissionOverride: true,
+                                  });
+                                }
+                                return;
+                              }
+                              const num = Number.parseFloat(raw.replace(',', '.'));
+                              if (
+                                Number.isFinite(num) &&
+                                num >= 0 &&
+                                num <= 100 &&
+                                num !== activeItem.commissionPercent
+                              ) {
+                                assignTechMutation.mutate({
+                                  technicianId: activeItem.assignedTechnicianId ?? null,
+                                  commissionPercent: num,
+                                });
+                              }
+                            }}
+                            className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-800"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -475,6 +626,9 @@ export default function OrderDetailPage({
               </div>
             </Card>
 
+            {/* Required Parts Queue for this Item */}
+            <ItemPartRequestsCard orderId={orderId} item={activeItem} />
+
             {/* Read-only Photo Gallery */}
             <Card className="p-5 space-y-3">
               <div className="flex items-center justify-between">
@@ -525,9 +679,16 @@ export default function OrderDetailPage({
           <div className="space-y-5 lg:col-span-5">
             <Card className="p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-display text-sm font-bold text-slate-900">
-                  {locale === 'en' ? 'Quote & Margin' : 'Orçamento & Margem'}
-                </h3>
+                <div>
+                  <h3 className="font-display text-sm font-bold text-slate-900">
+                    {locale === 'en' ? 'Quote & Margin' : 'Orçamento & Margem'}
+                  </h3>
+                  {activeItem.selectedQuoteOptionLabel && (
+                    <span className="mt-1 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                      {locale === 'en' ? 'Selected:' : 'Opção:'} {activeItem.selectedQuoteOptionLabel}
+                    </span>
+                  )}
+                </div>
                 {canQuoteNow && (
                   <Button
                     variant="outline"
@@ -539,6 +700,72 @@ export default function OrderDetailPage({
                   </Button>
                 )}
               </div>
+
+              {activeItem.quoteOptions && activeItem.quoteOptions.length > 1 && (
+                <div className="space-y-2 rounded-xl border border-blue-200/80 bg-blue-50/40 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-800">
+                    {locale === 'en'
+                      ? `${activeItem.quoteOptions.length} quote options offered`
+                      : `${activeItem.quoteOptions.length} opções oferecidas ao cliente`}
+                  </p>
+                  <div className="space-y-1.5">
+                    {activeItem.quoteOptions.map((opt) => {
+                      const isChosen = activeItem.selectedQuoteOptionId === opt.id;
+                      return (
+                        <div
+                          key={opt.id}
+                          className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-xs ${
+                            isChosen
+                              ? 'border-emerald-300 bg-emerald-50'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900">
+                              {opt.label}
+                              {opt.recommended && (
+                                <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                  {locale === 'en' ? 'Rec.' : 'Rec.'}
+                                </span>
+                              )}
+                              {isChosen && (
+                                <span className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  {locale === 'en' ? 'Chosen' : 'Escolhida'}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {opt.warrantyDays}d {locale === 'en' ? 'warranty' : 'garantia'}
+                              {opt.description ? ` · ${opt.description}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900">
+                              {formatBRL(opt.totalPrice, locale)}
+                            </span>
+                            {activeItem.status === 'QUOTE_SENT' &&
+                              canTransitionToStatus(role, 'APPROVED') && (
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  loading={transitionMutation.isPending}
+                                  onClick={() =>
+                                    transitionMutation.mutate({
+                                      status: 'APPROVED',
+                                      quoteOptionId: opt.id,
+                                    })
+                                  }
+                                >
+                                  {locale === 'en' ? 'Approve' : 'Aprovar'}
+                                </Button>
+                              )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-slate-600">

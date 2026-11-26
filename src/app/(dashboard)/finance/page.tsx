@@ -5,10 +5,12 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Banknote,
+  BarChart3,
   Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Download,
   Plus,
   Printer,
@@ -17,6 +19,7 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react';
+import { CommissionsPanel } from '@/components/finance/CommissionsPanel';
 import { DailyCashClosingModal } from '@/components/finance/DailyCashClosingModal';
 import { FinanceCharts, type MonthlyTrendPoint } from '@/components/finance/FinanceCharts';
 import {
@@ -24,6 +27,7 @@ import {
   SuppliersDrawer,
   TransactionFormModal,
 } from '@/components/finance/FinanceModals';
+import { WorkshopAnalyticsPanel } from '@/components/finance/WorkshopAnalyticsPanel';
 import { Button, Card, EmptyState, Spinner } from '@/components/ui/Primitives';
 import { useToast } from '@/components/ui/ToastProvider';
 import { financeApi, ordersApi } from '@/lib/api/endpoints';
@@ -55,6 +59,7 @@ export default function FinancePage() {
   const [txTypeFilter, setTxTypeFilter] = useState<TransactionType | 'ALL'>('ALL');
   const [txStatusFilter, setTxStatusFilter] = useState<TransactionStatus | 'ALL'>('ALL');
   const [page, setPage] = useState(0);
+  const [activeTab, setActiveTab] = useState<'cashflow' | 'indicators' | 'commissions'>('cashflow');
 
   const [txModalOpen, setTxModalOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<FinancialTransactionResponse | null>(null);
@@ -103,6 +108,22 @@ export default function FinancePage() {
     queryFn: () => ordersApi.getProfitability({ from, to, zone: 'America/Sao_Paulo' }),
     enabled: allowed,
   });
+
+  const analyticsQuery = useQuery({
+    queryKey: ['finance', 'analytics', from, to],
+    queryFn: () => ordersApi.getAnalytics({ from, to, zone: 'America/Sao_Paulo' }),
+    enabled: allowed,
+  });
+
+  const commissionsQuery = useQuery({
+    queryKey: ['finance', 'commissions', from, to],
+    queryFn: () => ordersApi.getMonthlyCommissions({ from, to, zone: 'America/Sao_Paulo' }),
+    enabled: allowed,
+  });
+
+  const showCommissionsTab =
+    Boolean(commissionsQuery.data?.technicianAssignmentEnabled) ||
+    (commissionsQuery.data?.deliveredWithTechnicianCount ?? 0) > 0;
 
   const transactionsQuery = useQuery({
     queryKey: ['finance', 'transactions', from, to, txTypeFilter, txStatusFilter, page],
@@ -239,6 +260,66 @@ export default function FinancePage() {
           </div>
         </div>
 
+        {/* Finance Tabs: Cash Flow vs. Actionable Workshop Indicators */}
+        <div className="flex gap-1 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab('cashflow')}
+            className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'cashflow'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Wallet className="h-4 w-4" />
+            {locale === 'en' ? 'Cash Flow & Ledger' : 'Caixa & Extrato'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('indicators')}
+            className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'indicators'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            {locale === 'en' ? 'Workshop Indicators' : 'Indicadores da Oficina'}
+            {(analyticsQuery.data?.overdueActiveCount ?? 0) > 0 && (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">
+                {analyticsQuery.data?.overdueActiveCount}
+              </span>
+            )}
+          </button>
+          {showCommissionsTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('commissions')}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                activeTab === 'commissions'
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Coins className="h-4 w-4" />
+              {locale === 'en' ? 'Commissions' : 'Comissões'}
+            </button>
+          )}
+        </div>
+
+        {activeTab === 'indicators' ? (
+          <WorkshopAnalyticsPanel
+            analytics={analyticsQuery.data}
+            loading={analyticsQuery.isLoading}
+          />
+        ) : activeTab === 'commissions' ? (
+          <CommissionsPanel
+            report={commissionsQuery.data}
+            loading={commissionsQuery.isLoading}
+            monthLabel={monthLabel}
+          />
+        ) : (
+        <>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="p-4">
@@ -477,6 +558,8 @@ export default function FinancePage() {
             </div>
           )}
         </Card>
+        </>
+        )}
       </div>
 
       {/* Printable A4 Financial Report / Daily Closing */}

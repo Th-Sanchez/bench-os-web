@@ -8,6 +8,7 @@ const ALLOWED_V1_PREFIXES = [
   'orders',
   'order-items',
   'parts-catalog',
+  'part-requests',
   'finance',
 ] as const;
 
