@@ -39,6 +39,7 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
   const queryClient = useQueryClient();
 
   const canWrite = canManagePartsCatalog(session?.user.role);
+  const isPreDiagnosis = item.status === 'RECEIVED';
   const isTerminal =
     item.status === 'DELIVERED' || item.status === 'DISCARDED' || item.status === 'CANCELLED';
 
@@ -50,6 +51,7 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
   const requestsQuery = useQuery({
     queryKey: ['item-part-requests', orderId, item.id],
     queryFn: () => partRequestsApi.listForItem(orderId, item.id),
+    enabled: !isPreDiagnosis,
   });
 
   const markOrderedMutation = useMutation({
@@ -100,6 +102,10 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
 
   const list = requestsQuery.data ?? [];
   const pendingCount = list.filter((r) => r.status === 'TO_ORDER' || r.status === 'ORDERED').length;
+
+  if (isPreDiagnosis || (isTerminal && !requestsQuery.isLoading && list.length === 0)) {
+    return null;
+  }
 
   return (
     <>

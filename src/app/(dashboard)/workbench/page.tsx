@@ -380,7 +380,7 @@ export default function WorkbenchPage() {
           }
         />
       ) : viewMode === 'kanban' ? (
-        <div className="flex gap-3.5 overflow-x-auto pb-4">
+        <div className="bench-scrollbar flex gap-3.5 overflow-x-auto pb-4">
           {KANBAN_STATUSES.map((status) => {
             const columnItems = filteredItems.filter((item) => item.status === status);
             const style = ITEM_STATUS_STYLES[status];
