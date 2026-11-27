@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Archive,
+  BookOpen,
   ClipboardList,
   Cog,
   Globe,
@@ -155,7 +156,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="border-t border-slate-200 p-3">
+      <div className="border-t border-slate-200 p-3 space-y-2">
+        <Link
+          href="/como-usar"
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setMobileMenuOpen(false)}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+        >
+          <BookOpen className="h-3.5 w-3.5 text-blue-600" />
+          <span>{locale === 'en' ? 'Help & How to use' : 'Central Como Usar'}</span>
+        </Link>
         <div className="rounded-xl bg-slate-50 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-900 truncate">

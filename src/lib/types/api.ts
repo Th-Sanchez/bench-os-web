@@ -645,3 +645,14 @@ export interface ItemPaymentSummaryResponse {
   amount: number;
   paidAt: string;
 }
+
+// Integrations: Read-only tenant modules enabled by the platform (Super-Admin managed)
+export interface TenantModuleResponse {
+  moduleKey: string;
+  name: string;
+  description: string;
+  builtIn: boolean;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  updatedAt: string | null;
+}

@@ -34,6 +34,7 @@ import type {
   ServiceOrderResponse,
   SupplierResponse,
   TechnicianOptionResponse,
+  TenantModuleResponse,
   TenantSettingsResponse,
   TransactionCategory,
   TransactionPaymentMethod,
@@ -345,4 +346,8 @@ export const financeApi = {
 
   listItemPayments: (itemId: string) =>
     apiRequest<ItemPaymentSummaryResponse[]>(`/api/v1/finance/order-items/${itemId}/payments`),
+};
+
+export const integrationsApi = {
+  listModules: () => apiRequest<TenantModuleResponse[]>('/api/v1/integrations/modules'),
 };
