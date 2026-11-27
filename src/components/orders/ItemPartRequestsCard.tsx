@@ -39,8 +39,13 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
   const queryClient = useQueryClient();
 
   const canWrite = canManagePartsCatalog(session?.user.role);
+  const isPreApproval =
+    item.status === 'RECEIVED' || item.status === 'DIAGNOSING' || item.status === 'QUOTE_SENT';
   const isTerminal =
-    item.status === 'DELIVERED' || item.status === 'DISCARDED' || item.status === 'CANCELLED';
+    item.status === 'REJECTED' ||
+    item.status === 'DELIVERED' ||
+    item.status === 'DISCARDED' ||
+    item.status === 'CANCELLED';
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PartRequestResponse | null>(null);
@@ -50,6 +55,7 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
   const requestsQuery = useQuery({
     queryKey: ['item-part-requests', orderId, item.id],
     queryFn: () => partRequestsApi.listForItem(orderId, item.id),
+    enabled: !isPreApproval,
   });
 
   const markOrderedMutation = useMutation({
@@ -100,6 +106,10 @@ export function ItemPartRequestsCard({ orderId, item }: ItemPartRequestsCardProp
 
   const list = requestsQuery.data ?? [];
   const pendingCount = list.filter((r) => r.status === 'TO_ORDER' || r.status === 'ORDERED').length;
+
+  if (isPreApproval || (isTerminal && !requestsQuery.isLoading && list.length === 0)) {
+    return null;
+  }
 
   return (
     <>
