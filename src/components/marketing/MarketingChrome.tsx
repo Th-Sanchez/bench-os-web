@@ -219,6 +219,11 @@ export function MarketingFooter({ homePath = '/' }: { homePath?: '/' | '/site' }
                   Termos de Uso
                 </Link>
               </li>
+              <li>
+                <Link href="/excluir-conta" className="hover:text-white">
+                  Exclusão de Conta
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

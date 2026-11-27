@@ -100,6 +100,11 @@ export default async function PrivacidadePage() {
                 galeria na OS ou enviar a logo da oficina.
               </li>
               <li>
+                <strong>Contatos (opcional):</strong> acessada somente quando o operador toca no
+                botão de importar um contato da agenda ao cadastrar um cliente — o BenchOS não
+                sincroniza nem armazena sua lista completa de contatos em segundo plano.
+              </li>
+              <li>
                 <strong>Notificações Push:</strong> usadas para avisar a equipe quando um cliente
                 aprova orçamento no link <span className="font-mono">/track</span> ou em alertas
                 operacionais configurados.
@@ -146,7 +151,11 @@ export default async function PrivacidadePage() {
                 className="font-semibold text-blue-600 hover:underline"
               >
                 {supportEmail}
-              </a>
+              </a>{' '}
+              ou seguindo o passo a passo em{' '}
+              <Link href="/excluir-conta" className="font-semibold text-blue-600 hover:underline">
+                benchos.app.br/excluir-conta
+              </Link>
               . As solicitações de exclusão são processadas em até 15 dias úteis.
             </p>
           </section>

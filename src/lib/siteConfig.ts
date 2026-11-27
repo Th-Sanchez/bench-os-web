@@ -3,7 +3,13 @@ const DEFAULT_APP_URL = 'https://app.benchos.app.br';
 const DEFAULT_SUPPORT_EMAIL = 'contato@benchos.app.br';
 const DEFAULT_MARKETING_HOSTS = ['benchos.app.br', 'www.benchos.app.br'];
 
-export const PUBLIC_MARKETING_PATHS = ['/site', '/como-usar', '/privacidade', '/termos'] as const;
+export const PUBLIC_MARKETING_PATHS = [
+  '/site',
+  '/como-usar',
+  '/privacidade',
+  '/termos',
+  '/excluir-conta',
+] as const;
 
 export function getSiteUrl(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, '');

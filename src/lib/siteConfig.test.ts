@@ -24,6 +24,7 @@ describe('siteConfig host & route helpers', () => {
     expect(isPublicMarketingPath('/como-usar')).toBe(true);
     expect(isPublicMarketingPath('/privacidade')).toBe(true);
     expect(isPublicMarketingPath('/termos')).toBe(true);
+    expect(isPublicMarketingPath('/excluir-conta')).toBe(true);
     expect(isPublicMarketingPath('/workbench')).toBe(false);
     expect(isPublicMarketingPath('/orders/new')).toBe(false);
   });

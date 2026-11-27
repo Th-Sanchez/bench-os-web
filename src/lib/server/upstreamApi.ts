@@ -10,6 +10,7 @@ const ALLOWED_V1_PREFIXES = [
   'parts-catalog',
   'part-requests',
   'finance',
+  'integrations',
 ] as const;
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
